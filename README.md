@@ -23,22 +23,28 @@ This is a **single-user local application**. It is not a hosted service and does
 ## Quick start (Windows + Docker Desktop)
 
 1. Install Docker Desktop and start it.
-2. Copy .env.example to .env.
-3. Add your Gemini key to GEMINI_API_KEY. Set a long random S3_SECRET_KEY.
-4. Start the local application:
+2. Double-click `start.bat`. On first run it creates `.env` and opens it in Notepad.
+3. Add your Gemini key to `GEMINI_API_KEY` and replace `S3_SECRET_KEY` with a long random secret.
+4. Save `.env`, then double-click `start.bat` again.
+5. Open http://localhost:3000. API docs: http://localhost:8000/docs.
+
+Optional command-line equivalent:
 
        docker compose up --build -d
 
-5. Open http://localhost:3000. API docs: http://localhost:8000/docs.
+Use `stop.bat` to stop the app and `logs.bat` to follow container logs. These commands never delete the local `data/` directory.
 
 This starts the local archive pipeline. If Google Drive is not configured, source files remain safe in data/inbox and Drive status shows an error/pending state. Configure Drive later and press BACKUP on an archive.
 
 ## Enable Google Drive S3 gateway
 
-1. Run PowerShell: .\scripts\setup-drive.ps1
-2. Create an Rclone remote named gdrive using the Google Drive backend and complete browser OAuth.
-3. Start the full stack:
+1. Double-click `start-drive.bat`; it opens the Rclone configuration wizard when Drive has not been configured yet.
+2. Create an Rclone remote named `gdrive` using the Google Drive backend and complete browser OAuth.
+3. The launcher starts the full Compose stack with the Drive profile.
 
+PowerShell/manual equivalent:
+
+       .\scripts\setup-drive.ps1
        docker compose --profile drive up --build -d
 
 S3 endpoint: http://127.0.0.1:9000. The worker connects to it over the private Compose network. See docs/GOOGLE-DRIVE-S3.md for compatibility limits.
