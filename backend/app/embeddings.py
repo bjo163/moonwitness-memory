@@ -1,6 +1,7 @@
 import logging
 from functools import lru_cache
 from typing import Any
+
 from .config import get_settings
 
 log = logging.getLogger(__name__)
@@ -20,8 +21,10 @@ def index_knowledge(items: list[dict[str, Any]]) -> None:
         import lancedb
 
         model = _load_embedding_model(settings.embedding_model)
+        # The configured default is a native FastEmbed multilingual model; it
+        # does not use the E5 query:/passage: instruction prefixes.
         texts = [
-            f"passage: {item['title']}\n{item.get('summary', '')}\n{item.get('content', '')}"
+            " ".join(part for part in (item["title"], item.get("summary", ""), item.get("content", "")) if part)
             for item in items
         ]
         vectors = list(model.embed(texts))
@@ -60,7 +63,7 @@ def search_vectors(query: str, limit: int = 30) -> list[str]:
         if "knowledge" not in db.table_names():
             return []
         model = _load_embedding_model(settings.embedding_model)
-        query_vector = next(model.query_embed([f"query: {query}"]))
+        query_vector = next(model.query_embed([query]))
         rows = (
             db.open_table("knowledge")
             .search(query_vector.tolist())

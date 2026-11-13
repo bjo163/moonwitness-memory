@@ -11,7 +11,7 @@ class Settings(BaseSettings):
     gemini_api_key: str = ""
     gemini_model: str = "gemini-3.8-flash"
     enable_embeddings: bool = True
-    embedding_model: str = "intfloat/multilingual-e5-small"
+    embedding_model: str = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
     s3_endpoint_url: str = ""
     s3_bucket: str = "mw-memory"
     s3_region: str = "us-east-1"

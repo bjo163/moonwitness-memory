@@ -1,4 +1,3 @@
-import json
 import logging
 import time
 from pathlib import Path
@@ -8,7 +7,7 @@ from .ai import GeminiExtractor
 from .archive import chunk_messages, iter_conversations
 from .config import get_settings
 from .db import (
-    claim_job, connection, get_archive, init_db, save_knowledge, save_messages,
+    claim_job, get_archive, init_db, save_knowledge, save_messages,
     update_archive, update_job,
 )
 from .embeddings import index_knowledge
@@ -18,19 +17,6 @@ from .storage import upload_archive
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("memory-worker")
 MAX_ATTEMPTS = 5
-
-
-def load_knowledge_for_archive(archive_id: str) -> list[dict[str, Any]]:
-    with connection() as db:
-        rows = db.execute("SELECT * FROM knowledge WHERE archive_id=?", (archive_id,)).fetchall()
-    output = []
-    for row in rows:
-        item = dict(row)
-        item["tags"] = json.loads(item.pop("tags_json"))
-        item["entities"] = json.loads(item.pop("entities_json"))
-        item["source_message_ids"] = json.loads(item.pop("source_message_ids_json"))
-        output.append(item)
-    return output
 
 
 def backup_source_archive(archive: dict[str, Any]) -> None:
@@ -101,9 +87,8 @@ def process_job(job: dict[str, Any]) -> None:
         raise ValueError("No ChatGPT conversations found in this archive")
     update_job(job["id"], total_conversations=total)
 
-    current_items = load_knowledge_for_archive(archive["id"])
     try:
-        synced = sync_to_moonwitness(current_items)
+        synced = sync_to_moonwitness(archive["id"])
         if synced:
             log.info("Synced %s knowledge records to MoonWitness receiver", synced)
     except Exception:
@@ -137,6 +122,8 @@ def main() -> None:
                     update_archive(job["archive_id"], status="failed")
             else:
                 update_job(job["id"], status="retry", error=str(exc)[:2000])
+                # Avoid hammering Gemini/Drive during an outage; the job remains resumable.
+                time.sleep(min(60, 2 ** min(attempts, 6)))
 
 
 if __name__ == "__main__":

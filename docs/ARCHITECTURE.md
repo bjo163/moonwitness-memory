@@ -2,43 +2,63 @@
 
 ## Operating model
 
-This is a personal application running on the user's computer through Docker Compose. Web, API and S3 ports bind to loopback only. No hosted SaaS, public deployment, VPS or multi-tenant layer is required.
+MoonWitness Memory is a standalone, single-user application running on the user's computer through Docker Compose. It does not depend on the MoonWitness application, database schema or ORM. Web, API and optional S3 ports bind to loopback only.
 
-- Next.js: local dashboard.
-- FastAPI: archive upload, metadata, search and job control.
-- Python worker: streaming import, Gemini extraction, local embeddings, Drive backup and MoonWitness export/webhook.
-- SQLite + FTS5: local metadata, messages, provenance and full-text search.
-- LanceDB + FastEmbed: local multilingual vector index.
-- Rclone S3 gateway: optional experimental S3-compatible endpoint backed by Google Drive.
-- Gemini: cloud AI only. Bounded conversation chunks are sent; raw archive files remain local and are copied to Drive when configured.
+- **Next.js** — local dashboard.
+- **FastAPI** — streamed archive upload, system status, job control, search, provenance and export.
+- **Python worker** — incremental import, Gemini extraction, local embedding indexing, optional Drive backup and optional webhook delivery.
+- **SQLite + FTS5** — archive metadata, messages, job checkpoints, knowledge records and full-text search.
+- **LanceDB + FastEmbed** — local multilingual vector index.
+- **Rclone S3 gateway** — optional experimental S3-compatible endpoint backed by a Google Drive remote.
+- **Gemini API** — optional cloud extraction. Only bounded text chunks are sent.
 
 ## Large archive behavior
 
-The browser posts a File body directly to the API. FastAPI streams request chunks to a temporary file on the data volume while calculating SHA-256, then atomically renames it. This avoids multipart spooling plus a second disk copy. The worker opens ZIP members and iterates a top-level conversations array using ijson, holding one conversation in memory at a time. The parser never expands the full ZIP to disk.
+The browser sends a File body directly to the API. FastAPI streams request chunks to a temporary file on the data volume while calculating SHA-256, then atomically renames it. This avoids multipart spooling plus a second disk copy.
 
-Messages are inserted idempotently and each completed conversation is a checkpoint. A retry resumes from the last completed conversation. A long conversation that fails before its checkpoint may be repeated; extraction records use stable IDs to avoid duplicate knowledge rows. Gemini prompts are bounded by a character budget, which is a practical guard rather than an exact token limit.
+The worker opens ZIP members and iterates the top-level conversations array using ijson. It does not extract the full ZIP to disk. One conversation is materialized at a time; its messages are chunked into bounded contexts before AI extraction. A pathological single conversation can still require substantial memory, so available RAM and archive structure remain practical limits.
 
-The original upload is never modified. Duplicate archives are detected by SHA-256. MAX_UPLOAD_GB controls the API limit; effective capacity is constrained by disk space, ZIP structure, Drive quota, network and model limits.
+Messages are inserted idempotently. Each completed conversation becomes a job checkpoint. A retry resumes from the last completed conversation. A conversation that fails before its checkpoint may be repeated; extracted knowledge IDs are stable, preventing duplicate rows.
+
+The original upload is never modified. Duplicate archives are detected by SHA-256. `MAX_UPLOAD_GB` controls the API body limit; practical capacity is constrained by local storage, a single conversation's size, ZIP structure, Drive quota, network and model limits.
+
+## Knowledge contract
+
+Each knowledge record retains:
+- stable record ID and type/kind;
+- title, summary and content;
+- tags and entities;
+- confidence;
+- archive and conversation IDs;
+- original source message IDs;
+- creation/update timestamps and optional sync timestamp.
+
+The `/api/knowledge/{id}/sources` endpoint resolves source message IDs back to the original message text. `/api/export.ndjson` streams the entire knowledge corpus. MoonWitness can pull and ingest this data later without sharing a database or ORM.
+
+An optional webhook sends versioned batches only when `MOONWITNESS_SYNC_URL` is explicitly configured. No endpoint is assumed or hardcoded for MoonWitness.
+
+## Google Drive path
+
+The Drive profile starts `rclone serve s3` against a Google Drive remote. The worker uses the internal Compose endpoint and Boto3 multipart uploads. Rclone's S3 server is experimental and supports common object-storage operations, not the complete AWS S3 contract. This is only an archive-backup adapter, not a general S3 service.
+
+The local gateway is optional. Without it, archive ingestion and extraction continue and local originals are retained.
 
 ## Data layout
 
-- data/inbox: original uploaded source archives.
-- data/db: SQLite database.
-- data/vectors: local LanceDB vector index.
-- data/models: local embedding model cache.
-- data/exports: newline-delimited JSON corpus.
-- data/rclone: private Rclone OAuth configuration.
+- `data/inbox` — original source archives.
+- `data/db` — SQLite database.
+- `data/vectors` — local LanceDB vector index.
+- `data/models` — local embedding model cache.
+- `data/exports` — NDJSON corpus.
+- `data/rclone` — private Rclone OAuth configuration.
 
-Back up the full data directory. Never commit it.
-
-## MoonWitness integration
-
-The inspected MoonWitness PocketBase schema does not yet expose a dedicated knowledge-memory collection or documented ingestion contract. This app therefore always writes data/exports/moonwitness-knowledge.ndjson and supports an optional versioned JSON webhook via MOONWITNESS_SYNC_URL. Configure the webhook only after a real MoonWitness receiver exists; this avoids inventing a route or writing into an unrelated collection.
+Back up the full data directory. Stop the Compose stack before a manual copy to keep SQLite files consistent.
 
 ## Local security
 
-- Published ports bind to 127.0.0.1.
-- Keep .env and data/ out of Git.
+- Published ports bind to `127.0.0.1`.
+- There is no login in the single-user local API; do not publish it to LAN or internet.
+- Keep `.env` and `data/rclone/rclone.conf` private.
 - Use a long random S3 secret.
-- Protect data/rclone/rclone.conf because it contains OAuth credentials.
-- Gemini receives only selected transcript chunks when extraction is enabled. Exclude sensitive conversations before processing when required.
+- Gemini receives selected transcript text chunks when extraction is enabled.
+- Embeddings run locally.

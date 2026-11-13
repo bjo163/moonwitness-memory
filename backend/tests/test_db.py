@@ -27,3 +27,48 @@ def test_resume_checkpoint_and_backup_job(monkeypatch, tmp_path):
     assert retry["attempts"] == 2
     backup_id = db.create_backup_job(archive["id"])
     assert backup_id
+
+
+
+def test_stream_knowledge_export_and_source_provenance(monkeypatch, tmp_path):
+    from app.config import Settings
+
+    settings = Settings(data_dir=tmp_path)
+    monkeypatch.setattr("app.db.get_settings", lambda: settings)
+    db.init_db()
+    archive, created = db.create_archive(
+        "history.zip", str(tmp_path / "history.zip"), 123, "b" * 64
+    )
+    assert created
+
+    conversation = {
+        "id": "conversation-1",
+        "title": "Source conversation",
+        "messages": [{
+            "id": "message-1",
+            "role": "user",
+            "text": "The original source statement",
+            "created_at": "2026-11-13T00:00:00Z",
+        }],
+    }
+    db.save_messages(archive["id"], conversation)
+    db.save_knowledge(archive["id"], conversation["id"], {
+        "id": "knowledge-1",
+        "kind": "decision",
+        "title": "A durable decision",
+        "summary": "Summary",
+        "content": "Full knowledge item",
+        "tags": ["project"],
+        "entities": ["MoonWitness"],
+        "source_message_ids": ["message-1"],
+        "confidence": 0.9,
+    })
+
+    records = list(db.iter_knowledge_records(archive_id=archive["id"], batch_size=1))
+    assert len(records) == 1
+    assert records[0]["tags"] == ["project"]
+    assert records[0]["source_message_ids"] == ["message-1"]
+
+    provenance = db.get_knowledge_sources("knowledge-1")
+    assert provenance is not None
+    assert provenance["messages"][0]["content"] == "The original source statement"
