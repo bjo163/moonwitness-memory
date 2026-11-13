@@ -1,6 +1,6 @@
 import json
 from pathlib import Path
-from typing import Any, Iterator
+from typing import Any
 
 import httpx
 
@@ -15,9 +15,9 @@ def export_corpus() -> Path:
     target = settings.export_dir / "moonwitness-knowledge.ndjson"
     temporary = target.with_suffix(target.suffix + ".tmp")
     try:
-        with temporary.open("w", encoding="utf-8", newline="\\n") as handle:
+        with temporary.open("w", encoding="utf-8") as handle:
             for record in iter_knowledge_records(batch_size=250):
-                handle.write(json.dumps(record, ensure_ascii=False, separators=(",", ":")) + "\\n")
+                handle.write(json.dumps(record, ensure_ascii=False, separators=(",", ":")) + "\n")
         temporary.replace(target)
     finally:
         temporary.unlink(missing_ok=True)
