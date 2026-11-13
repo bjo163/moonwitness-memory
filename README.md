@@ -4,6 +4,10 @@
 
 MoonWitness Memory is a standalone, single-user knowledge engine for AI conversation archives. It runs on your own Windows machine with Docker Compose. MoonWitness can consume its knowledge later through a documented REST API or NDJSON export; this repository does not depend on MoonWitness internals or its database.
 
+## Interface DNA
+
+The dashboard uses **ARCHIVE RIOT**: underground archive-room energy, manga-inspired vector artwork, industrial telemetry, neobrutalist panels and a complete dark/light theme. See [Brand DNA](docs/BRAND-DNA.md).
+
 ## What it does
 
 - Imports ChatGPT ZIP exports and standalone `conversations.json` files.
