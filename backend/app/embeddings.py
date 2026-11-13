@@ -1,7 +1,6 @@
 import logging
 from functools import lru_cache
 from typing import Any
-
 from .config import get_settings
 
 log = logging.getLogger(__name__)
@@ -47,5 +46,28 @@ def index_knowledge(items: list[dict[str, Any]]) -> None:
         else:
             db.create_table("knowledge", data=rows)
     except Exception:
-        # Keyword search remains available if the optional vector index fails.
         log.exception("Local embedding index failed; SQLite FTS remains available")
+
+
+def search_vectors(query: str, limit: int = 30) -> list[str]:
+    settings = get_settings()
+    if not settings.enable_embeddings or not query.strip():
+        return []
+    try:
+        import lancedb
+
+        db = lancedb.connect(str(settings.vector_dir))
+        if "knowledge" not in db.table_names():
+            return []
+        model = _load_embedding_model(settings.embedding_model)
+        query_vector = next(model.query_embed([f"query: {query}"]))
+        rows = (
+            db.open_table("knowledge")
+            .search(query_vector.tolist())
+            .limit(max(1, min(limit, 100)))
+            .to_list()
+        )
+        return [str(row["id"]) for row in rows if row.get("id")]
+    except Exception:
+        log.exception("Local semantic search failed; SQLite FTS remains available")
+        return []

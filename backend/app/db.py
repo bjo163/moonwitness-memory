@@ -307,3 +307,17 @@ def search_knowledge(query: str, limit: int = 30):
                 (f"%{query}%", f"%{query}%", f"%{query}%", limit),
             ).fetchall()
         return [dict(row) for row in rows]
+
+
+
+def get_knowledge_by_ids(ids: list[str]) -> list[dict[str, Any]]:
+    if not ids:
+        return []
+    placeholders = ",".join("?" for _ in ids)
+    with connection() as db:
+        rows = db.execute(
+            f"SELECT * FROM knowledge WHERE id IN ({placeholders})",
+            ids,
+        ).fetchall()
+    indexed = {row["id"]: dict(row) for row in rows}
+    return [indexed[item_id] for item_id in ids if item_id in indexed]

@@ -9,9 +9,10 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 
 from .config import get_settings
+from .embeddings import search_vectors
 from .db import (
-    create_archive, create_backup_job, dashboard_counts, init_db,
-    list_rows, search_knowledge, update_job,
+    create_archive, create_backup_job, dashboard_counts, get_knowledge_by_ids,
+    init_db, list_rows, search_knowledge, update_job,
 )
 
 log = logging.getLogger(__name__)
@@ -70,7 +71,12 @@ def knowledge(limit: int = 100):
 def search(q: str, limit: int = 30):
     if not q.strip():
         raise HTTPException(status_code=400, detail="Search query is required")
-    return search_knowledge(q.strip(), max(1, min(limit, 100)))
+    bounded_limit = max(1, min(limit, 100))
+    keyword_results = search_knowledge(q.strip(), bounded_limit)
+    seen = {row["id"] for row in keyword_results}
+    vector_ids = [item_id for item_id in search_vectors(q.strip(), bounded_limit) if item_id not in seen]
+    semantic_results = get_knowledge_by_ids(vector_ids[: max(0, bounded_limit - len(keyword_results))])
+    return keyword_results + semantic_results
 
 
 @app.post("/api/archives")
