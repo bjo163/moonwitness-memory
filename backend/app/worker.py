@@ -7,13 +7,17 @@ from typing import Any
 from .ai import GeminiExtractor
 from .archive import chunk_messages, iter_conversations
 from .config import get_settings
-from .db import claim_job, connection, get_archive, init_db, save_knowledge, save_messages, update_archive, update_job
+from .db import (
+    claim_job, connection, get_archive, init_db, save_knowledge, save_messages,
+    update_archive, update_job,
+)
 from .embeddings import index_knowledge
 from .moonwitness import export_corpus, sync_to_moonwitness
 from .storage import upload_archive
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("memory-worker")
+MAX_ATTEMPTS = 5
 
 
 def load_knowledge_for_archive(archive_id: str) -> list[dict[str, Any]]:
@@ -29,6 +33,14 @@ def load_knowledge_for_archive(archive_id: str) -> list[dict[str, Any]]:
     return output
 
 
+def backup_source_archive(archive: dict[str, Any]) -> None:
+    path = Path(archive["file_path"])
+    key = f"archives/{archive['id']}/{archive['file_name']}"
+    uri = upload_archive(path, key)
+    update_archive(archive["id"], drive_status="uploaded", drive_key=uri, drive_error=None)
+    log.info("Archive backed up to %s", uri)
+
+
 def process_job(job: dict[str, Any]) -> None:
     settings = get_settings()
     archive = get_archive(job["archive_id"])
@@ -38,12 +50,18 @@ def process_job(job: dict[str, Any]) -> None:
     if not path.is_file():
         raise FileNotFoundError(f"Archive file is missing: {path}")
 
+    if job.get("mode") == "backup_only":
+        try:
+            backup_source_archive(archive)
+            update_job(job["id"], status="complete", error=None)
+            return
+        except Exception as exc:
+            update_archive(archive["id"], drive_status="error", drive_error=str(exc)[:1000])
+            raise
+
     if archive["drive_status"] != "uploaded":
         try:
-            key = f"archives/{archive['id']}/{archive['file_name']}"
-            uri = upload_archive(path, key)
-            update_archive(archive["id"], drive_status="uploaded", drive_key=uri, drive_error=None)
-            log.info("Archive backed up to %s", uri)
+            backup_source_archive(archive)
         except Exception as exc:
             update_archive(archive["id"], drive_status="error", drive_error=str(exc)[:1000])
             log.warning("Drive/S3 backup failed; local original is preserved: %s", exc)
@@ -57,6 +75,7 @@ def process_job(job: dict[str, Any]) -> None:
     extractor = GeminiExtractor(settings.gemini_api_key, settings.gemini_model)
     processed = int(job.get("cursor") or 0)
     total = 0
+
     for index, conversation in enumerate(iter_conversations(path)):
         total = index + 1
         if index < processed:
@@ -70,12 +89,18 @@ def process_job(job: dict[str, Any]) -> None:
                 extracted.append(record)
         if extracted:
             index_knowledge(extracted)
-        update_job(job["id"], cursor=index + 1, processed_conversations=index + 1,
-                   total_conversations=max(total, processed), status="processing")
+        update_job(
+            job["id"],
+            cursor=index + 1,
+            processed_conversations=index + 1,
+            total_conversations=max(total, processed),
+            status="processing",
+        )
 
     if total == 0:
         raise ValueError("No ChatGPT conversations found in this archive")
     update_job(job["id"], total_conversations=total)
+
     current_items = load_knowledge_for_archive(archive["id"])
     try:
         synced = sync_to_moonwitness(current_items)
@@ -83,10 +108,13 @@ def process_job(job: dict[str, Any]) -> None:
             log.info("Synced %s knowledge records to MoonWitness receiver", synced)
     except Exception:
         log.exception("MoonWitness webhook sync failed; local NDJSON export remains available")
+
     export_corpus()
     update_archive(archive["id"], status="complete")
-    update_job(job["id"], status="complete", cursor=total, processed_conversations=total,
-               total_conversations=total, error=None)
+    update_job(
+        job["id"], status="complete", cursor=total,
+        processed_conversations=total, total_conversations=total, error=None,
+    )
     log.info("Completed archive %s (%s conversations)", archive["file_name"], total)
 
 
@@ -102,7 +130,13 @@ def main() -> None:
             process_job(job)
         except Exception as exc:
             log.exception("Job %s failed", job["id"])
-            update_job(job["id"], status="retry", error=str(exc)[:2000])
+            attempts = int(job.get("attempts") or 1)
+            if attempts >= MAX_ATTEMPTS:
+                update_job(job["id"], status="failed", error=str(exc)[:2000])
+                if job.get("mode") != "backup_only":
+                    update_archive(job["archive_id"], status="failed")
+            else:
+                update_job(job["id"], status="retry", error=str(exc)[:2000])
 
 
 if __name__ == "__main__":

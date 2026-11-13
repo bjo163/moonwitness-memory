@@ -2,24 +2,31 @@ import hashlib
 import logging
 import re
 from pathlib import Path
+from urllib.parse import unquote
 from uuid import uuid4
 
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 
 from .config import get_settings
-from .db import create_archive, dashboard_counts, init_db, list_rows, search_knowledge, update_job
+from .db import (
+    create_archive, create_backup_job, dashboard_counts, init_db,
+    list_rows, search_knowledge, update_job,
+)
 
 log = logging.getLogger(__name__)
 settings = get_settings()
-app = FastAPI(title="MoonWitness Memory Bridge API", version="0.1.0",
-              description="Local-first archive ingestion and AI knowledge extraction.")
+app = FastAPI(
+    title="MoonWitness Memory Bridge API",
+    version="0.1.1",
+    description="Local-first archive ingestion and AI knowledge extraction.",
+)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
     allow_credentials=False,
     allow_methods=["GET", "POST"],
-    allow_headers=["Content-Type"],
+    allow_headers=["Content-Type", "X-Archive-Filename"],
 )
 
 
@@ -67,9 +74,11 @@ def search(q: str, limit: int = 30):
 
 
 @app.post("/api/archives")
-async def upload_archive(file: UploadFile = File(...)):
+async def upload_archive(request: Request):
+    """Stream raw request bytes to disk; avoids multipart temp-file duplication."""
     settings.inbox_dir.mkdir(parents=True, exist_ok=True)
-    safe_name = re.sub(r"[^A-Za-z0-9._-]+", "-", Path(file.filename or "archive.zip").name).strip(".-")
+    raw_name = request.headers.get("x-archive-filename", "archive.zip")
+    safe_name = re.sub(r"[^A-Za-z0-9._-]+", "-", Path(unquote(raw_name)).name).strip(".-")
     safe_name = safe_name or "archive.zip"
     if Path(safe_name).suffix.lower() not in {".zip", ".json"}:
         raise HTTPException(status_code=415, detail="Only .zip ChatGPT exports and .json conversations files are supported")
@@ -80,12 +89,15 @@ async def upload_archive(file: UploadFile = File(...)):
     size = 0
     try:
         with temp_path.open("wb") as output:
-            while chunk := await file.read(8 * 1024 * 1024):
+            async for chunk in request.stream():
+                if not chunk:
+                    continue
                 size += len(chunk)
                 if size > settings.max_upload_bytes:
                     raise HTTPException(status_code=413, detail=f"Archive exceeds configured limit ({settings.max_upload_gb} GB)")
                 digest.update(chunk)
                 output.write(chunk)
+
         if size == 0:
             raise HTTPException(status_code=400, detail="Uploaded file is empty")
         sha = digest.hexdigest()
@@ -93,6 +105,7 @@ async def upload_archive(file: UploadFile = File(...)):
         if existing:
             temp_path.unlink(missing_ok=True)
             return {"duplicate": True, "archive": existing}
+
         temp_path.replace(final_path)
         archive, created = create_archive(safe_name, str(final_path), size, sha)
         if not created:
@@ -108,8 +121,17 @@ async def upload_archive(file: UploadFile = File(...)):
         final_path.unlink(missing_ok=True)
         log.exception("Archive upload failed")
         raise HTTPException(status_code=500, detail="Archive upload failed")
-    finally:
-        await file.close()
+
+
+@app.post("/api/archives/{archive_id}/backup")
+def backup_archive(archive_id: str):
+    archive = next((row for row in list_rows("archives", 5000) if row["id"] == archive_id), None)
+    if not archive:
+        raise HTTPException(status_code=404, detail="Archive not found")
+    if archive["drive_status"] == "uploaded":
+        return {"status": "already_uploaded", "archive_id": archive_id}
+    job_id = create_backup_job(archive_id)
+    return {"status": "queued", "archive_id": archive_id, "job_id": job_id}
 
 
 @app.post("/api/jobs/{job_id}/resume")
@@ -120,5 +142,6 @@ def resume_job(job_id: str):
         raise HTTPException(status_code=404, detail="Job not found")
     if job["status"] not in {"awaiting_ai", "retry", "failed"}:
         raise HTTPException(status_code=409, detail=f"Job cannot be resumed from {job['status']}")
-    update_job(job_id, status="pending", cursor=0, processed_conversations=0, error=None)
+    # Preserve the checkpoint so retries do not repeat already completed conversations.
+    update_job(job_id, status="pending", attempts=0, error=None)
     return {"status": "queued", "job_id": job_id}

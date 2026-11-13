@@ -31,3 +31,11 @@ jobs:
         run: npm install
       - working-directory: frontend
         run: npm run lint
+
+  compose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: cp .env.example .env
+      - run: docker compose config --quiet
+      - run: docker compose --profile drive config --quiet

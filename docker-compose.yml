@@ -64,13 +64,8 @@ services:
       - 0.0.0.0:9000
       - --auth-key
       - ${S3_ACCESS_KEY:-local-memory-access},${S3_SECRET_KEY:-replace-this-long-random-secret}
-      - --vfs-cache-mode
-      - writes
-      - --cache-dir
-      - /cache
     volumes:
       - ./data/rclone:/config
-      - ./data/rclone-cache:/cache
     ports:
       - "127.0.0.1:9000:9000"
       - "127.0.0.1:53682:53682"

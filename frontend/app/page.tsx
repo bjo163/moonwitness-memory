@@ -1,6 +1,7 @@
 "use client";
 
-import { ChangeEvent, useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import type { ChangeEvent, ReactNode } from "react";
 
 const API = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000";
 type Counts = { archives: number; messages: number; knowledge: number; active_jobs: number; failed_jobs: number };
@@ -51,10 +52,15 @@ export default function Home() {
     if (!file) return;
     setBusy(true);
     setNotice("INGESTING " + file.name);
-    const body = new FormData();
-    body.append("file", file);
     try {
-      const response = await fetch(API + "/api/archives", { method: "POST", body });
+      const response = await fetch(API + "/api/archives", {
+        method: "POST",
+        body: file,
+        headers: {
+          "Content-Type": "application/octet-stream",
+          "X-Archive-Filename": encodeURIComponent(file.name),
+        },
+      });
       const result = await response.json();
       if (!response.ok) throw new Error(result.detail || "Upload failed");
       setNotice(result.duplicate ? "DUPLICATE ARCHIVE // ALREADY IN VAULT" : "ARCHIVE ACCEPTED // WORKER QUEUED");
@@ -65,6 +71,13 @@ export default function Home() {
       setBusy(false);
       event.target.value = "";
     }
+  }
+
+  async function backup(archiveId: string) {
+    const response = await fetch(API + "/api/archives/" + archiveId + "/backup", { method: "POST" });
+    const result = await response.json();
+    setNotice(response.ok ? "DRIVE BACKUP QUEUED" : result.detail || "BACKUP FAILED");
+    await refresh();
   }
 
   async function resume(jobId: string) {
@@ -148,6 +161,6 @@ export default function Home() {
 function Stat({ label, value, alert }: { label: string; value: number; alert?: boolean }) {
   return <div className={"stat " + (alert ? "stat-alert" : "")}><span>{label}</span><strong>{value.toLocaleString()}</strong></div>;
 }
-function Empty({ children }: { children: React.ReactNode }) {
+function Empty({ children }: { children: ReactNode }) {
   return <div className="empty">{children}</div>;
 }

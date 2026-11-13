@@ -9,27 +9,29 @@ This is a **single-user local application**. It is not a hosted service and does
 ## Capabilities
 
 - Imports ChatGPT ZIP exports containing conversations.json and standalone conversations.json.
-- Streams uploads to disk and iterates conversations without loading the entire archive into RAM.
+- Streams the browser upload body directly to disk; avoids a second multipart temporary copy.
+- Streams JSON parsing and processes one conversation at a time.
 - Detects duplicate archives by SHA-256 and preserves originals unchanged.
 - Extracts stories, lore, characters, events, ideas, projects, decisions, quotes, concepts and fragments with Gemini.
 - Stores messages, knowledge and source message IDs in local SQLite.
-- Uses SQLite FTS5 for full-text search and optional FastEmbed + LanceDB for local multilingual vector indexing.
+- Uses SQLite FTS5 for full-text search and FastEmbed + LanceDB for local multilingual vector indexing.
 - Uploads source archives to Google Drive through Rclone's experimental S3 gateway.
 - Exports an NDJSON corpus and supports a configurable MoonWitness webhook.
-- Checkpoints each completed conversation so interrupted jobs can resume.
+- Checkpoints after each completed conversation, recovers stale jobs and resumes from the last checkpoint.
+- Re-queues Drive-only backups for an archive imported before Google Drive was configured.
 
 ## Quick start (Windows + Docker Desktop)
 
 1. Install Docker Desktop and start it.
 2. Copy .env.example to .env.
-3. Add your Gemini key to GEMINI_API_KEY. Change S3_SECRET_KEY to a long random secret.
+3. Add your Gemini key to GEMINI_API_KEY. Set a long random S3_SECRET_KEY.
 4. Start the local application:
 
        docker compose up --build -d
 
 5. Open http://localhost:3000. API docs: http://localhost:8000/docs.
 
-Without the Drive profile, local import and AI extraction still work. Drive backup is marked unavailable; the original stays in data/inbox.
+This starts the local archive pipeline. If Google Drive is not configured, source files remain safe in data/inbox and Drive status shows an error/pending state. Configure Drive later and press BACKUP on an archive.
 
 ## Enable Google Drive S3 gateway
 
@@ -39,7 +41,7 @@ Without the Drive profile, local import and AI extraction still work. Drive back
 
        docker compose --profile drive up --build -d
 
-S3 endpoint: http://127.0.0.1:9000. See docs/GOOGLE-DRIVE-S3.md for limitations.
+S3 endpoint: http://127.0.0.1:9000. The worker connects to it over the private Compose network. See docs/GOOGLE-DRIVE-S3.md for compatibility limits.
 
 ## Configure Gemini
 
@@ -47,7 +49,7 @@ Set GEMINI_API_KEY in .env. The model is configurable through GEMINI_MODEL. Rest
 
        docker compose up -d --force-recreate api worker
 
-Only bounded message chunks are sent to Gemini. The original ZIP is never sent as one giant prompt.
+Only bounded message chunks are sent to Gemini. The original ZIP is never sent as one giant prompt. Review sensitive archives before enabling cloud extraction.
 
 ## MoonWitness sync
 
@@ -57,10 +59,10 @@ The inspected MoonWitness codebase does not yet provide a dedicated knowledge-me
 
 - data/inbox: original uploaded archives.
 - data/db: SQLite database.
-- data/vectors: local embeddings and vector search index.
+- data/vectors: local LanceDB vector index.
+- data/models: downloaded local embedding model cache.
 - data/exports: MoonWitness NDJSON corpus.
 - data/rclone: Google Drive OAuth configuration.
-- data/rclone-cache: Rclone VFS cache.
 
 Back up the entire data/ directory. Never commit it.
 
