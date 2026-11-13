@@ -27,7 +27,7 @@ export default function Home() {
 
   const refresh = useCallback(async () => {
     try {
-      const [c, a, j, k] = await Promise.all([
+      const [c, a, j, k, s] = await Promise.all([
         fetch(API + "/api/dashboard", { cache: "no-store" }),
         fetch(API + "/api/archives", { cache: "no-store" }),
         fetch(API + "/api/jobs", { cache: "no-store" }),
