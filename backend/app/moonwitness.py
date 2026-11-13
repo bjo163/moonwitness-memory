@@ -1,46 +1,75 @@
 import json
 from pathlib import Path
 from typing import Any
+
 import httpx
+
 from .config import get_settings
-from .db import connection, utc_now
+from .db import connection, iter_knowledge_records, utc_now
 
 
 def export_corpus() -> Path:
+    """Write the complete knowledge corpus without loading it all into RAM."""
     settings = get_settings()
+    settings.export_dir.mkdir(parents=True, exist_ok=True)
     target = settings.export_dir / "moonwitness-knowledge.ndjson"
-    with connection() as db, target.open("w", encoding="utf-8") as handle:
-        rows = db.execute("SELECT * FROM knowledge ORDER BY created_at").fetchall()
-        for row in rows:
-            record = dict(row)
-            record["tags"] = json.loads(record.pop("tags_json"))
-            record["entities"] = json.loads(record.pop("entities_json"))
-            record["source_message_ids"] = json.loads(record.pop("source_message_ids_json"))
-            handle.write(json.dumps(record, ensure_ascii=False) + "\n")
+    temporary = target.with_suffix(target.suffix + ".tmp")
+    try:
+        with temporary.open("w", encoding="utf-8") as handle:
+            for record in iter_knowledge_records(batch_size=250):
+                handle.write(json.dumps(record, ensure_ascii=False, separators=(",", ":")) + "\n")
+        temporary.replace(target)
+    finally:
+        temporary.unlink(missing_ok=True)
     return target
 
 
-def sync_to_moonwitness(items: list[dict[str, Any]]) -> int:
+def sync_to_moonwitness(archive_id: str) -> int:
+    """Push one archive to a configured receiver in bounded, retryable batches."""
     settings = get_settings()
-    export_corpus()
-    if not settings.moonwitness_sync_url or not items:
+    if not settings.moonwitness_sync_url:
         return 0
-    headers = {"Content-Type": "application/json"}
+
+    headers = {"Content-Type": "application/json", "Accept": "application/json"}
     if settings.moonwitness_sync_token:
         headers["Authorization"] = f"Bearer {settings.moonwitness_sync_token}"
+
     synced = 0
-    with httpx.Client(timeout=60) as client:
-        for offset in range(0, len(items), max(1, settings.moonwitness_batch_size)):
-            batch = items[offset:offset + settings.moonwitness_batch_size]
-            response = client.post(
-                settings.moonwitness_sync_url,
-                headers=headers,
-                json={"source": "moonwitness-memory-bridge", "schema_version": 1, "records": batch},
-            )
-            response.raise_for_status()
+    batch: list[dict[str, Any]] = []
+    with httpx.Client(timeout=httpx.Timeout(60.0, connect=15.0)) as client:
+        for record in iter_knowledge_records(archive_id=archive_id, batch_size=settings.moonwitness_batch_size):
+            batch.append(record)
+            if len(batch) < max(1, settings.moonwitness_batch_size):
+                continue
+            _send_batch(client, headers, batch)
+            _mark_synced(batch)
             synced += len(batch)
-    if synced:
-        with connection() as db:
-            db.executemany("UPDATE knowledge SET synced_at=? WHERE id=?",
-                           [(utc_now(), item["id"]) for item in items])
+            batch = []
+
+        if batch:
+            _send_batch(client, headers, batch)
+            _mark_synced(batch)
+            synced += len(batch)
     return synced
+
+
+def _send_batch(client: httpx.Client, headers: dict[str, str], batch: list[dict[str, Any]]) -> None:
+    response = client.post(
+        get_settings().moonwitness_sync_url,
+        headers=headers,
+        json={
+            "source": "moonwitness-memory",
+            "schema_version": 1,
+            "records": batch,
+        },
+    )
+    response.raise_for_status()
+
+
+def _mark_synced(batch: list[dict[str, Any]]) -> None:
+    now = utc_now()
+    with connection() as db:
+        db.executemany(
+            "UPDATE knowledge SET synced_at=? WHERE id=?",
+            [(now, item["id"]) for item in batch],
+        )

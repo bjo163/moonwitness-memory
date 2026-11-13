@@ -21,7 +21,7 @@ if not exist .env (
   echo.
   echo FIRST RUN: edit .env and add your GEMINI_API_KEY.
   echo Then run start.bat again.
-  start "" notepad.exe "%CD%.env"
+  start "" notepad.exe "%CD%\.env"
   pause
   exit /b 0
 )

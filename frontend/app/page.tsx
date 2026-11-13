@@ -5,6 +5,7 @@ import type { ChangeEvent, ReactNode } from "react";
 
 const API = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000";
 type Counts = { archives: number; messages: number; knowledge: number; active_jobs: number; failed_jobs: number };
+type SystemStatus = { gemini_configured: boolean; gemini_model: string; embeddings_enabled: boolean; drive_configured: boolean; moonwitness_sync_configured: boolean; max_upload_gb: number };
 type Archive = { id: string; file_name: string; size_bytes: number; status: string; drive_status: string; created_at: string };
 type Job = { id: string; archive_id: string; status: string; processed_conversations: number; total_conversations: number | null; error: string | null };
 type Knowledge = { id: string; kind: string; title: string; summary: string; confidence: number; conversation_id: string };
@@ -19,22 +20,26 @@ export default function Home() {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [knowledge, setKnowledge] = useState<Knowledge[]>([]);
   const [busy, setBusy] = useState(false);
+  const [backupBusyId, setBackupBusyId] = useState<string | null>(null);
+  const [system, setSystem] = useState<SystemStatus | null>(null);
   const [notice, setNotice] = useState("LOCAL ENGINE STANDBY");
   const [query, setQuery] = useState("");
 
   const refresh = useCallback(async () => {
     try {
-      const [c, a, j, k] = await Promise.all([
+      const [c, a, j, k, s] = await Promise.all([
         fetch(API + "/api/dashboard", { cache: "no-store" }),
         fetch(API + "/api/archives", { cache: "no-store" }),
         fetch(API + "/api/jobs", { cache: "no-store" }),
         fetch(API + "/api/knowledge?limit=12", { cache: "no-store" }),
+        fetch(API + "/api/system", { cache: "no-store" }),
       ]);
-      if (![c, a, j, k].every((r) => r.ok)) throw new Error("API unavailable");
+      if (![c, a, j, k, s].every((r) => r.ok)) throw new Error("API unavailable");
       setCounts(await c.json());
       setArchives(await a.json());
       setJobs(await j.json());
       setKnowledge(await k.json());
+      setSystem(await s.json());
       setNotice("LOCAL ENGINE ONLINE");
     } catch {
       setNotice("API OFFLINE // CHECK DOCKER COMPOSE");
@@ -74,10 +79,18 @@ export default function Home() {
   }
 
   async function backup(archiveId: string) {
-    const response = await fetch(API + "/api/archives/" + archiveId + "/backup", { method: "POST" });
-    const result = await response.json();
-    setNotice(response.ok ? "DRIVE BACKUP QUEUED" : result.detail || "BACKUP FAILED");
-    await refresh();
+    setBackupBusyId(archiveId);
+    try {
+      const response = await fetch(API + "/api/archives/" + archiveId + "/backup", { method: "POST" });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.detail || "BACKUP FAILED");
+      setNotice(result.status === "already_uploaded" ? "ARCHIVE ALREADY IN DRIVE" : "DRIVE BACKUP QUEUED");
+      await refresh();
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "BACKUP FAILED");
+    } finally {
+      setBackupBusyId(null);
+    }
   }
 
   async function resume(jobId: string) {
@@ -108,7 +121,7 @@ export default function Home() {
             {busy ? "PROCESSING..." : "＋ INGEST ARCHIVE"}
             <input type="file" accept=".zip,.json,application/zip,application/json" onChange={upload} disabled={busy} />
           </label>
-          <p className="micro">CHATGPT EXPORT .ZIP / conversations.json · LARGE FILES SUPPORTED</p>
+          <p className="micro">{system ? `GEMINI ${system.gemini_configured ? "READY" : "MISSING KEY"} · LOCAL EMBEDDINGS ${system.embeddings_enabled ? "ON" : "OFF"} · DRIVE ${system.drive_configured ? "CONFIGURED" : "NOT CONFIGURED"} · MAX ${system.max_upload_gb} GB` : "CHATGPT EXPORT .ZIP / conversations.json · LARGE FILES SUPPORTED"}</p>
         </div>
         <div className="hero-stamp"><span>LOCAL</span><b>01</b><span>KNOWLEDGE<br />VAULT</span></div>
       </section>
@@ -129,6 +142,7 @@ export default function Home() {
                 <div className="file-icon">ZIP</div>
                 <div className="row-main"><strong>{item.file_name}</strong><small>{formatBytes(item.size_bytes)} · {new Date(item.created_at).toLocaleString()}</small></div>
                 <div className="row-tags"><span className={"tag " + item.status}>{item.status}</span><span className={"tag " + item.drive_status}>DRIVE {item.drive_status}</span></div>
+                {item.drive_status !== "uploaded" && <button className="mini-button" disabled={backupBusyId === item.id || !system?.drive_configured} onClick={() => void backup(item.id)}>{backupBusyId === item.id ? "QUEUING..." : system?.drive_configured ? "BACKUP" : "DRIVE OFF"}</button>}
               </div>
             ))}
           </div>
@@ -147,13 +161,13 @@ export default function Home() {
         </div>
       </section>
       <section className="panel knowledge-panel">
-        <div className="panel-head"><div><p className="eyebrow">03 / EXTRACTED INTELLIGENCE</p><h3>KNOWLEDGE CORPUS</h3></div><div className="search"><input value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => event.key === "Enter" && void search()} placeholder="Search stories, lore, ideas..." /><button onClick={() => void search()}>SEARCH ↗</button></div></div>
+        <div className="panel-head"><div><p className="eyebrow">03 / EXTRACTED INTELLIGENCE</p><h3>KNOWLEDGE CORPUS</h3></div><div className="panel-actions"><a className="export-link" href={API + "/api/export.ndjson"}>EXPORT NDJSON ↗</a><div className="search"><input value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => event.key === "Enter" && void search()} placeholder="Search stories, lore, ideas..." /><button onClick={() => void search()}>SEARCH ↗</button></div></div></div>
         <div className="knowledge-grid">
           {knowledge.length === 0 && <Empty>No extracted knowledge yet. Add GEMINI_API_KEY to .env and restart the stack.</Empty>}
           {knowledge.map((item) => <article className="knowledge-card" key={item.id}><div className="knowledge-meta"><span>{item.kind.toUpperCase()}</span><span>{Math.round(item.confidence * 100)}% CONF.</span></div><h4>{item.title}</h4><p>{item.summary}</p><small>SOURCE {item.conversation_id.slice(0, 12)}</small></article>)}
         </div>
       </section>
-      <footer><span>MW / MEMORY BRIDGE</span><span>PRIVATE BY DESIGN · LOCAL DATA · CLOUD AI WHEN CONFIGURED</span><span>v0.1.0</span></footer>
+      <footer><span>MW / MEMORY BRIDGE</span><span>PRIVATE BY DESIGN · LOCAL DATA · CLOUD AI WHEN CONFIGURED</span><span>v0.2.0</span></footer>
     </main>
   );
 }
