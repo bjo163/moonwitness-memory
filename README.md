@@ -51,7 +51,7 @@ S3 endpoint: http://127.0.0.1:9000. The worker connects to it over the private C
 
 ## Configure Gemini
 
-Set GEMINI_API_KEY in .env. The model is configurable through GEMINI_MODEL. Restart the API and worker after editing:
+Set GEMINI_API_KEY in .env. The default model is gemini-3.8-flash; change it through GEMINI_MODEL whenever you want. Restart the API and worker after editing:
 
        docker compose up -d --force-recreate api worker
 

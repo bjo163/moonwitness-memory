@@ -9,7 +9,7 @@ class Settings(BaseSettings):
     max_upload_gb: int = 500
     ai_chunk_chars: int = 14000
     gemini_api_key: str = ""
-    gemini_model: str = "gemini-2.5-flash"
+    gemini_model: str = "gemini-3.8-flash"
     enable_embeddings: bool = True
     embedding_model: str = "intfloat/multilingual-e5-small"
     s3_endpoint_url: str = ""
