@@ -11,7 +11,7 @@ services:
     volumes:
       - ./data:/data
     ports:
-      - "127.0.0.1:\${API_PORT:-8000}:8000"
+      - "127.0.0.1:${API_PORT:-8000}:8000"
     command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
     restart: unless-stopped
     healthcheck:
@@ -30,6 +30,7 @@ services:
       S3_ENDPOINT_URL: http://rclone-s3:9000
     volumes:
       - ./data:/data
+      - ./data/models:/root/.cache/fastembed
     command: ["python", "-m", "app.worker"]
     depends_on:
       api:
@@ -41,11 +42,11 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
       args:
-        NEXT_PUBLIC_API_BASE_URL: http://localhost:\${API_PORT:-8000}
+        NEXT_PUBLIC_API_BASE_URL: http://localhost:${API_PORT:-8000}
     environment:
-      NEXT_PUBLIC_API_BASE_URL: http://localhost:\${API_PORT:-8000}
+      NEXT_PUBLIC_API_BASE_URL: http://localhost:${API_PORT:-8000}
     ports:
-      - "127.0.0.1:\${WEB_PORT:-3000}:3000"
+      - "127.0.0.1:${WEB_PORT:-3000}:3000"
     depends_on:
       api:
         condition: service_healthy
@@ -62,13 +63,11 @@ services:
       - --addr
       - 0.0.0.0:9000
       - --auth-key
-      - \${S3_ACCESS_KEY:-local-memory-access},\${S3_SECRET_KEY:-replace-this-long-random-secret}
+      - ${S3_ACCESS_KEY:-local-memory-access},${S3_SECRET_KEY:-replace-this-long-random-secret}
       - --vfs-cache-mode
       - writes
       - --cache-dir
       - /cache
-      - --vfs-cache-max-size
-      - 20G
     volumes:
       - ./data/rclone:/config
       - ./data/rclone-cache:/cache
