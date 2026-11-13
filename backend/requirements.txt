@@ -1,0 +1,12 @@
+fastapi>=0.115,<1
+uvicorn[standard]>=0.34,<1
+python-multipart>=0.0.20,<1
+pydantic-settings>=2.7,<3
+ijson>=3.3,<4
+google-genai>=1.0,<2
+boto3>=1.36,<2
+httpx>=0.28,<1
+lancedb>=0.20,<1
+fastembed>=0.7,<1
+pyarrow>=19,<25
+pytest>=8.3,<9
