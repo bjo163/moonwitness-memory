@@ -392,7 +392,7 @@ export default function Home() {
   }
 
   return (
-    <main className="app-shell" data-theme={theme}>
+    <main className="app-shell">
       <aside className="sidebar">
         <a className="brand-lockup" href="#top" aria-label="MoonWitness Memory home">
           <span className="brand-symbol"><b>M</b><i>W</i></span>
@@ -401,18 +401,19 @@ export default function Home() {
 
         <div className="sidebar-rule"><span>FIELD MAP / 01</span><i /></div>
         <nav className="side-nav" aria-label="Main navigation">
-          <a className="side-link side-link--active" href="#overview"><Icon name="grid"/><span>Overview</span><kbd>01</kbd></a>
-          <a className="side-link" href="#vault"><Icon name="archive"/><span>Archive vault</span><kbd>{String(archives.length).padStart(2, "0")}</kbd></a>
-          <a className="side-link" href="#queue"><Icon name="activity"/><span>Work queue</span><kbd>{String(runningJobs).padStart(2, "0")}</kbd></a>
-          <a className="side-link" href="#knowledge"><Icon name="brain"/><span>Knowledge</span><kbd>{String(counts.knowledge).padStart(2, "0")}</kbd></a>
+          <a className={"side-link " + (activeSection === "overview" ? "side-link--active" : "")} href="#overview" aria-current={activeSection === "overview" ? "location" : undefined}><Icon name="grid"/><span>Overview</span><kbd>01</kbd></a>
+          <a className={"side-link " + (activeSection === "vault" ? "side-link--active" : "")} href="#vault" aria-current={activeSection === "vault" ? "location" : undefined}><Icon name="archive"/><span>Archive vault</span><kbd>{String(archives.length).padStart(2, "0")}</kbd></a>
+          <a className={"side-link " + (activeSection === "queue" ? "side-link--active" : "")} href="#queue" aria-current={activeSection === "queue" ? "location" : undefined}><Icon name="activity"/><span>Work queue</span><kbd>{String(runningJobs).padStart(2, "0")}</kbd></a>
+          <a className={"side-link " + (activeSection === "knowledge" ? "side-link--active" : "")} href="#knowledge" aria-current={activeSection === "knowledge" ? "location" : undefined}><Icon name="brain"/><span>Knowledge</span><kbd>{String(counts.knowledge).padStart(2, "0")}</kbd></a>
         </nav>
 
         <div className="sidebar-rule sidebar-rule--spaced"><span>ENGINE STATUS</span><i /></div>
         <div className="engine-list">
-          <EngineStatus label="API CORE" status={apiOnline ? "online" : apiOnline === false ? "offline" : "checking"} />
-          <EngineStatus label="GEMINI EXTRACTOR" status={system?.gemini_configured ? "online" : "idle"} />
-          <EngineStatus label="LOCAL EMBEDDINGS" status={system?.embeddings_enabled ? "online" : "idle"} />
-          <EngineStatus label="DRIVE GATEWAY" status={system?.drive_configured ? "online" : "idle"} />
+          <EngineStatus label="API CORE" status={apiOnline === null ? "checking" : apiOnline ? "online" : "offline"} />
+          <EngineStatus label="GEMINI KEY" status={!system ? "checking" : system.gemini_configured ? "ready" : "missing"} />
+          <EngineStatus label="LOCAL EMBEDDINGS" status={!system ? "checking" : system.embeddings_enabled ? "ready" : "optional"} />
+          <EngineStatus label="DRIVE BACKUP" status={!system ? "checking" : system.drive_configured ? "ready" : "optional"} />
+          <EngineStatus label="JOB PIPELINE" status={apiOnline === false ? "offline" : counts.failed_jobs > 0 ? "warning" : counts.active_jobs > 0 ? "active" : apiOnline ? "idle" : "checking"} />
         </div>
 
         <div className="sidebar-bottom">
@@ -480,20 +481,28 @@ export default function Home() {
           </section>
 
           <section className="workbench-grid">
-            <Panel className="vault-panel" >
+            <Panel className="vault-panel" id="vault">
               <SectionLabel index="01 / INGESTION" title="THE ARCHIVE VAULT" trailing={<span className="panel-counter">{archives.length.toString().padStart(2, "0")} RECORDS</span>}/>
               <div
                 className={"drop-zone " + (dragging ? "drop-zone--active" : "") + (busy ? "drop-zone--busy" : "")}
                 onDragOver={(event) => { event.preventDefault(); setDragging(true); }}
                 onDragLeave={(event) => { event.preventDefault(); setDragging(false); }}
                 onDrop={onDrop}
+                aria-label="Drop a ChatGPT archive to import"
               >
                 <div className="drop-icon"><Icon name="folder" size={23}/><span>+</span></div>
                 <div className="drop-copy"><strong>{busy ? "ARCHIVE IN TRANSMISSION..." : dragging ? "DROP IT. WE'LL SORT IT." : "DROP YOUR HISTORY HERE"}</strong><span>ZIP EXPORT OR CONVERSATIONS.JSON</span></div>
                 <span className="drop-hint">DRAG / DROP</span>
               </div>
+              {busy && uploadProgress !== null && (
+                <div className="upload-progress" role="status" aria-live="polite">
+                  <div className="upload-progress__meta"><span>{uploadName || "ARCHIVE"} // TRANSMISSION</span><strong>{uploadProgress}%</strong></div>
+                  <div className="upload-progress__track" role="progressbar" aria-label="Archive upload progress" aria-valuemin={0} aria-valuemax={100} aria-valuenow={uploadProgress}><i style={{ width: uploadProgress + "%" }}/></div>
+                  <small>{uploadProgress === 100 ? "ARCHIVE RECEIVED // QUEUING WORKER" : "STREAMING DIRECTLY TO LOCAL VAULT"}</small>
+                </div>
+              )}
               <div className="list-heading"><span>RECENT CAPTURES</span><a href="#vault">VIEW ALL <Icon name="arrow-up-right" size={12}/></a></div>
-              <div className="archive-list" id="vault">
+              <div className="archive-list">
                 {recentArchives.length === 0 ? (
                   <EmptyState icon={<Icon name="archive" size={22}/>} title="THE VAULT IS QUIET" detail="Import your first ChatGPT export. Original files stay on this machine."/>
                 ) : recentArchives.map((archive, index) => (
@@ -510,14 +519,14 @@ export default function Home() {
               <div className="panel-tail"><span>ORIGINALS ARE NEVER MODIFIED</span><span>{archives.length} TOTAL ARCHIVES <i>↗</i></span></div>
             </Panel>
 
-            <Panel className="queue-panel" >
+            <Panel className="queue-panel" id="queue">
               <SectionLabel index="02 / OPERATIONS" title="THE WORK QUEUE" trailing={<span className="queue-live"><i/> LIVE / 7 SEC</span>}/>
               <div className="queue-summary">
                 <div><strong>{runningJobs.toString().padStart(2, "0")}</strong><span>IN MOTION</span></div>
                 <div><strong className={counts.failed_jobs ? "text-orange" : ""}>{counts.failed_jobs.toString().padStart(2, "0")}</strong><span>NEED REPAIR</span></div>
                 <div><strong>{counts.active_jobs.toString().padStart(2, "0")}</strong><span>IN QUEUE</span></div>
               </div>
-              <div className="job-list" id="queue">
+              <div className="job-list">
                 {recentJobs.length === 0 ? (
                   <EmptyState icon={<Icon name="activity" size={22}/>} title="NO ACTIVE TRANSMISSIONS" detail="Ingest an archive to start the extraction pipeline."/>
                 ) : recentJobs.map((job, index) => (
@@ -543,15 +552,33 @@ export default function Home() {
               <form className="search-bar" onSubmit={(event) => void search(event)}>
                 <div className="search-mark"><Icon name="search" size={18}/></div>
                 <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search your universe — lore, decisions, people, fragments..." aria-label="Search knowledge"/>
-                {query && <button className="clear-search" type="button" onClick={() => { setQuery(""); void refresh(); }} aria-label="Clear search"><Icon name="close" size={15}/></button>}
+                {query && <button className="clear-search" type="button" onClick={() => void clearKnowledgeSearch()} aria-label="Clear search"><Icon name="close" size={15}/></button>}
                 <button className="search-submit" type="submit" disabled={searching}>{searching ? "SCANNING..." : "SCAN THE PILE"} <Icon name="arrow-up-right" size={13}/></button>
               </form>
+              <div className="knowledge-controls">
+                <label className="kind-filter"><span>TYPE / FILTER</span>
+                  <select value={knowledgeKind} onChange={(event) => setKnowledgeKind(event.target.value)} aria-label="Filter knowledge by type">
+                    <option value="all">ALL TYPES</option>
+                    {knowledgeKinds.map((kind) => <option value={kind} key={kind}>{kind.replaceAll("_", " ").toUpperCase()}</option>)}
+                  </select>
+                </label>
+                <span className="knowledge-result-count">{visibleKnowledge.length} VISIBLE / {knowledge.length} LOADED</span>
+              </div>
               <div className="knowledge-grid">
                 {knowledge.length === 0 ? (
                   <EmptyState icon={<Icon name="brain" size={23}/>} title={query ? "NO SIGNAL MATCH" : "NOTHING EXTRACTED YET"} detail={query ? "Try another term. Search checks both full-text and local semantic vectors." : system?.gemini_configured ? "The first archive is waiting to become knowledge." : "Add GEMINI_API_KEY in .env and restart the API + worker to enable extraction."}/>
-                ) : knowledge.slice(0, 9).map((item, index) => <KnowledgeCard key={item.id} item={item} index={String(index + 1).padStart(2, "0")} onOpen={() => void openSources(item)}/>)}
+                ) : visibleKnowledge.length === 0 ? (
+                  <EmptyState icon={<Icon name="filter" size={23}/>} title="NO NODES IN THIS TYPE" detail="Switch the type filter to ALL TYPES or choose another category."/>
+                ) : visibleKnowledge.map((item, index) => <KnowledgeCard key={item.id} item={item} index={String(index + 1).padStart(2, "0")} onOpen={() => void openSources(item)}/>)}
               </div>
-              <div className="knowledge-tail"><span>LOCAL INDEX / FTS5 + LANCEDB</span><span>{knowledge.length} RECORDS SHOWN <b>✳</b></span></div>
+              <div className="knowledge-actions">
+                <div className="knowledge-tail"><span>LOCAL INDEX / FTS5 + LANCEDB</span><span>{knowledge.length} RECORDS LOADED <b>✳</b></span></div>
+                {knowledge.length >= knowledgeLimit && knowledgeLimit < (knowledgeMode === "search" ? 100 : 500) && (
+                  <button className="load-more-button" onClick={() => void loadMoreKnowledge()} disabled={loadingMore || searching}>
+                    {loadingMore ? "FETCHING MORE..." : "LOAD MORE SIGNAL"} <Icon name="arrow-down" size={13}/>
+                  </button>
+                )}
+              </div>
             </Panel>
           </section>
 
@@ -566,11 +593,13 @@ export default function Home() {
       {selectedKnowledge && (
         <div className="source-modal" role="dialog" aria-modal="true" aria-labelledby="source-modal-title">
           <button className="source-modal__backdrop" onClick={() => { setSelectedKnowledge(null); setSourceData(null); }} aria-label="Close source details"/>
-          <section className="source-modal__panel">
+          <section className="source-modal__panel" ref={sourcePanelRef} tabIndex={-1}>
             <div className="source-modal__top"><span>PROVENANCE / KNOWLEDGE NODE</span><button onClick={() => { setSelectedKnowledge(null); setSourceData(null); }} aria-label="Close source details"><Icon name="close" size={17}/></button></div>
             <div className="source-modal__heading"><span>{selectedKnowledge.kind.toUpperCase()} / {Math.round(selectedKnowledge.confidence * 100)}% CONFIDENCE</span><h2 id="source-modal-title">{selectedKnowledge.title}</h2><p>{selectedKnowledge.summary}</p></div>
             <div className="source-modal__trail"><span>ARCHIVE / {sourceData?.archive_id.slice(0, 12).toUpperCase() ?? "RESOLVING..."}</span><span>CONVERSATION / {sourceData?.conversation_id.slice(0, 12).toUpperCase() ?? selectedKnowledge.conversation_id.slice(0, 12).toUpperCase()}</span></div>
-            {sourceLoading ? <EmptyState icon={<Icon name="refresh" size={20}/>} title="TRACING THE SIGNAL" detail="Resolving this knowledge node back to its original messages..."/> : sourceError ? <EmptyState icon={<Icon name="alert" size={20}/>} title="TRACE INTERRUPTED" detail={sourceError + " — close this reader and try again."}/> : (
+            {sourceLoading ? <EmptyState icon={<Icon name="refresh" size={20}/>} title="TRACING THE SIGNAL" detail="Resolving this knowledge node back to its original messages..."/> : sourceError ? (
+              <div className="source-error" role="alert"><Icon name="alert" size={22}/><strong>TRACE INTERRUPTED</strong><p>{sourceError}</p><button onClick={() => void openSources(selectedKnowledge)}>RETRY SOURCE TRACE ↗</button></div>
+            ) : (
               <div className="source-message-list">
                 {(sourceData?.messages ?? []).length === 0 ? <EmptyState icon={<Icon name="alert" size={20}/>} title="SOURCE NOT FOUND" detail="No original messages were returned for this knowledge node."/> : sourceData?.messages.map((message) => (
                   <article className="source-message" key={message.message_id}>
@@ -592,8 +621,12 @@ export default function Home() {
   );
 }
 
-function EngineStatus({ label, status }: { label: string; status: "online" | "offline" | "idle" | "checking" }) {
-  return <div className="engine-status"><span>{label}</span><b className={"engine-status__value engine-status__value--" + status}><i/>{status.toUpperCase()}</b></div>;
+function EngineStatus({ label, status }: { label: string; status: "online" | "offline" | "idle" | "checking" | "warning" | "active" | "ready" | "missing" | "optional" }) {
+  const labels: Record<typeof status, string> = {
+    online: "ONLINE", offline: "OFFLINE", idle: "IDLE", checking: "CHECKING",
+    warning: "ATTENTION", active: "ACTIVE", ready: "READY", missing: "SETUP", optional: "OPTIONAL",
+  };
+  return <div className="engine-status"><span>{label}</span><b className={"engine-status__value engine-status__value--" + status}><i/>{labels[status]}</b></div>;
 }
 
 function ArchiveRow({ archive, index, driveReady, busy, onBackup }: { archive: Archive; index: string; driveReady: boolean; busy: boolean; onBackup: () => void }) {
