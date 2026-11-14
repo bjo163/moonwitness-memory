@@ -365,3 +365,7 @@ a{color:inherit}
 @media(max-width:1180px){
   .archive-row .row-action{grid-column:auto;grid-row:auto;justify-self:stretch;margin:0}
 }
+
+@media(max-width:640px){
+  .archive-row .row-action{grid-column:3/-1;justify-self:end;margin-top:-3px}
+}
