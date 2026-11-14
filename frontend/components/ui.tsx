@@ -11,8 +11,8 @@ export function SectionLabel({ index, title, trailing }: { index: string; title:
   );
 }
 
-export function Panel({ children, className = "" }: { children: ReactNode; className?: string }) {
-  return <section className={"panel " + className}>{children}</section>;
+export function Panel({ children, className = "", id }: { children: ReactNode; className?: string; id?: string }) {
+  return <section className={"panel " + className} id={id}>{children}</section>;
 }
 
 export function StatusBadge({ status, prefix }: { status: string; prefix?: string }) {

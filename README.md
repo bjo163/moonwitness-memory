@@ -6,7 +6,7 @@ MoonWitness Memory is a standalone, single-user knowledge engine for AI conversa
 
 ## Interface DNA
 
-The dashboard uses **ARCHIVE RIOT**: underground archive-room energy, manga-inspired vector artwork, industrial telemetry, neobrutalist panels and a complete dark/light theme. See [Brand DNA](docs/BRAND-DNA.md).
+The dashboard uses **ARCHIVE RIOT**: underground archive-room energy, manga-inspired vector artwork, industrial telemetry, neobrutalist panels and a complete dark/light theme. The command deck includes scroll-aware navigation, real archive upload progress, integration/job status cues, searchable and filterable knowledge with incremental loading, and an accessible provenance reader. See [Brand DNA](docs/BRAND-DNA.md).
 
 ## What it does
 

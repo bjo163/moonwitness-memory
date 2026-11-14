@@ -48,11 +48,15 @@ Fonts are progressive enhancement; the interface must remain legible when remote
 
 ## Interaction rules
 
-- Theme toggle: dark industrial console and light paper archive. Light mode is a complete palette, not a CSS inversion.
+- Theme toggle: dark industrial console and light paper archive. Initialize the saved theme before first paint to avoid a light/dark flash; gracefully fall back when browser storage is unavailable.
+- Section navigation tracks the visible Command Deck, Vault, Queue and Knowledge region. Anchors should land on the panel heading, not an inner list.
 - Motion is restrained: subtle pulse, float and panel entrance only. Respect `prefers-reduced-motion`.
-- Every action should provide a visible status or disabled state.
-- Search, import, resume, Drive backup and NDJSON export stay connected to the real API.
-- Knowledge cards open a provenance reader that resolves original source messages.
+- Every action should provide a visible status or disabled state. Large archive transfers expose byte-transfer progress rather than a fake timer.
+- Engine labels distinguish API reachability, configured credentials, optional integrations and queued/failed jobs. A configured integration must not be presented as a verified live connection.
+- Search, import, resume, Drive backup and NDJSON export stay connected to the real API. Search results remain stable during dashboard polling.
+- Knowledge supports type filtering and incremental loading through the existing bounded REST limit.
+- Knowledge cards open a keyboard-accessible provenance reader with Escape dismissal, focus trapping, scroll locking and focus restoration.
+- Keep Vault, Queue and Knowledge as clearly indexed areas within the single-page command deck; do not split the local utility into disconnected pages.
 
 ## Reusable frontend components
 

@@ -6,7 +6,7 @@ export type IconName =
   | "grid" | "archive" | "activity" | "brain" | "settings" | "sun" | "moon"
   | "upload" | "refresh" | "search" | "arrow-up-right" | "cloud" | "check"
   | "alert" | "arrow-right" | "folder" | "clock" | "external" | "terminal"
-  | "spark" | "file" | "zap" | "close";
+  | "spark" | "file" | "zap" | "close" | "filter" | "arrow-down";
 
 const paths: Record<IconName, ReactNode> = {
   grid: <><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></>,
@@ -32,6 +32,8 @@ const paths: Record<IconName, ReactNode> = {
   file: <><path d="M6 3h8l5 5v13H6z"/><path d="M14 3v5h5M9 13h7m-7 4h7"/></>,
   zap: <path d="m13 2-9 12h7l-1 8 10-13h-7l1-7Z"/>,
   close: <><path d="m6 6 12 12M18 6 6 18"/></>,
+  filter: <><path d="M4 5h16l-6.5 7.5v5l-3 1v-6L4 5Z"/></>,
+  "arrow-down": <><path d="M12 4v16m-6-6 6 6 6-6"/></>,
 };
 
 export function Icon({ name, size = 18, strokeWidth = 1.8, ...props }: SVGProps<SVGSVGElement> & { name: IconName; size?: number; strokeWidth?: number }) {
