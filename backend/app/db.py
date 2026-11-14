@@ -157,6 +157,31 @@ def create_backup_job(archive_id: str) -> str | None:
         return job_id
 
 
+def create_sync_job(archive_id: str) -> str | None:
+    """Queue an independently retryable knowledge delivery job."""
+    with connection() as db:
+        archive = db.execute("SELECT id FROM archives WHERE id=?", (archive_id,)).fetchone()
+        if not archive:
+            return None
+        active = db.execute(
+            """
+            SELECT id FROM jobs
+            WHERE archive_id=? AND mode='sync_only'
+              AND status IN ('pending','processing','retry')
+            """,
+            (archive_id,),
+        ).fetchone()
+        if active:
+            return str(active["id"])
+        job_id = str(uuid4())
+        now = utc_now()
+        db.execute(
+            "INSERT INTO jobs(id,archive_id,mode,status,created_at,updated_at) VALUES(?,?,'sync_only','pending',?,?)",
+            (job_id, archive_id, now, now),
+        )
+        return job_id
+
+
 def claim_job():
     """Atomically claim a job and recover workers abandoned for over ten minutes."""
     stale_before = (datetime.now(timezone.utc) - timedelta(minutes=10)).isoformat()

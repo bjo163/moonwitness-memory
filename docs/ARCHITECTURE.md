@@ -35,7 +35,7 @@ Each knowledge record retains:
 
 The `/api/knowledge/{id}/sources` endpoint resolves source message IDs back to the original message text. `/api/export.ndjson` streams the entire knowledge corpus. MoonWitness can pull and ingest this data later without sharing a database or ORM.
 
-An optional webhook sends versioned batches only when `MOONWITNESS_SYNC_URL` is explicitly configured. No endpoint is assumed or hardcoded for MoonWitness.
+An optional webhook sends versioned batches only when `MOONWITNESS_SYNC_URL` and `MOONWITNESS_SYNC_TOKEN` are configured. Delivery is a separate `sync_only` job with the same retry policy as archive jobs. Extraction completion is not coupled to remote availability. The receiver must upsert by stable knowledge ID because a retry can resend batches already accepted before a later batch failed. No endpoint is assumed or hardcoded for MoonWitness.
 
 ## Google Drive path
 

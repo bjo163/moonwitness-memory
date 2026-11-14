@@ -29,10 +29,16 @@ def sync_to_moonwitness(archive_id: str) -> int:
     settings = get_settings()
     if not settings.moonwitness_sync_url:
         return 0
+    if not settings.moonwitness_sync_token:
+        raise RuntimeError(
+            "MOONWITNESS_SYNC_TOKEN is required when MOONWITNESS_SYNC_URL is configured"
+        )
 
-    headers = {"Content-Type": "application/json", "Accept": "application/json"}
-    if settings.moonwitness_sync_token:
-        headers["Authorization"] = f"Bearer {settings.moonwitness_sync_token}"
+    headers = {
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+        "Authorization": f"Bearer {settings.moonwitness_sync_token}",
+    }
 
     synced = 0
     batch: list[dict[str, Any]] = []

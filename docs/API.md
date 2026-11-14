@@ -73,4 +73,18 @@ When `MOONWITNESS_SYNC_URL` is explicitly configured, the worker posts batches l
 }
 ```
 
-Add `MOONWITNESS_SYNC_TOKEN` to send a Bearer token. The receiver should upsert by `records[].id` so that retries are idempotent. Do not configure the webhook until a real receiving endpoint and its contract have been implemented.
+Both `MOONWITNESS_SYNC_URL` and `MOONWITNESS_SYNC_TOKEN` are required for delivery. The worker sends an Authorization Bearer token and a versioned payload. A configured URL without a token fails closed; it never sends unauthenticated knowledge.
+
+Delivery runs as a separate `sync_only` worker job. A failed delivery is retried independently from archive extraction, so Gemini is not called again. Each successful batch is marked with `synced_at`; if a later batch fails, a retry may resend earlier batches. The receiver MUST upsert by `records[].id` and treat the same ID as the same record (idempotency).
+
+### Receiver contract
+
+The receiving endpoint must:
+1. Accept `POST application/json` with `source=moonwitness-memory`, `schema_version=1`, and a `records` array.
+2. Validate the Bearer token using constant-time comparison.
+3. Validate each record and preserve `id`, `archive_id`, `conversation_id`, `source_message_ids`, `confidence`, and timestamps.
+4. Upsert by stable record `id`; repeated deliveries must not create duplicates.
+5. Commit the whole accepted batch before returning a 2xx response.
+6. Return a non-2xx response for invalid auth, unsupported schema versions, or failed writes so Memory can retry.
+
+Memory and MoonWitness databases remain separate. The receiving service owns its own storage model; it must not attach or share Memory's SQLite database.
