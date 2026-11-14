@@ -369,3 +369,7 @@ a{color:inherit}
 @media(max-width:640px){
   .archive-row .row-action{grid-column:3/-1;justify-self:end;margin-top:-3px}
 }
+
+.source-message__foot{display:flex;align-items:center;justify-content:space-between;gap:8px;padding-top:7px;border-top:1px solid var(--line)}
+.source-message__foot button{background:transparent;border:0;color:var(--acid);font:7px "DM Mono",monospace;letter-spacing:.06em;cursor:pointer}
+.source-message__foot button:focus-visible{outline:2px solid var(--acid);outline-offset:2px}
