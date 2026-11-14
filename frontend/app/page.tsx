@@ -227,7 +227,7 @@ export default function Home() {
   const visibleArchives = useMemo(() => {
     const needle = archiveQuery.trim().toLowerCase();
     const filtered = archives.filter((archive) => {
-      const matchesName = !needle || archive.file_name.toLowerCase().includes(needle) || archive.id.toLowerCase().includes(needle);
+      const matchesName = !needle || archive.file_name.toLowerCase().includes(needle) || archive.id.toLowerCase().includes(needle) || Boolean(archive.sha256?.toLowerCase().includes(needle));
       const matchesStatus = archiveStatus === "all" || archive.status.toLowerCase() === archiveStatus;
       const matchesDrive = archiveDriveStatus === "all" || archive.drive_status.toLowerCase() === archiveDriveStatus;
       return matchesName && matchesStatus && matchesDrive;
@@ -238,6 +238,7 @@ export default function Home() {
       return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
     });
   }, [archives, archiveQuery, archiveStatus, archiveDriveStatus, archiveSort]);
+  const archiveById = useMemo(() => new Map(archives.map((archive) => [archive.id, archive])), [archives]);
   const visibleJobs = useMemo(() => jobs.filter((job) => {
     if (queueFilter === "active") return ["pending", "processing", "retry"].includes(job.status);
     if (queueFilter === "attention") return ["failed", "awaiting_ai"].includes(job.status);
@@ -563,7 +564,7 @@ export default function Home() {
                 </div>
               )}
               <div className="vault-toolbar">
-                <label className="vault-search"><Icon name="search" size={15}/><input value={archiveQuery} onChange={(event) => { setArchiveQuery(event.target.value); setArchiveVisibleCount(8); }} placeholder="Find an archive or ID..." aria-label="Search archives"/>{archiveQuery && <button type="button" onClick={() => setArchiveQuery("")} aria-label="Clear archive search"><Icon name="close" size={13}/></button>}</label>
+                <label className="vault-search"><Icon name="search" size={15}/><input value={archiveQuery} onChange={(event) => { setArchiveQuery(event.target.value); setArchiveVisibleCount(8); }} placeholder="Find filename, ID or SHA-256..." aria-label="Search archives by filename, ID or SHA-256"/>{archiveQuery && <button type="button" onClick={() => setArchiveQuery("")} aria-label="Clear archive search"><Icon name="close" size={13}/></button>}</label>
                 <div className="vault-selects">
                   <label><span>PROCESS</span><select value={archiveStatus} onChange={(event) => { setArchiveStatus(event.target.value); setArchiveVisibleCount(8); }} aria-label="Filter archives by processing status">
                     <option value="all">ALL STATUS</option>
@@ -609,7 +610,7 @@ export default function Home() {
               </div>
               <div className="queue-filters" role="group" aria-label="Filter worker jobs">
                 {(["all", "active", "attention", "complete"] as QueueFilter[]).map((filter) => (
-                  <button key={filter} type="button" className={queueFilter === filter ? "queue-filter queue-filter--active" : "queue-filter"} onClick={() => { setQueueFilter(filter); setQueueVisibleCount(8); }}>
+                  <button key={filter} type="button" className={queueFilter === filter ? "queue-filter queue-filter--active" : "queue-filter"} aria-pressed={queueFilter === filter} onClick={() => { setQueueFilter(filter); setQueueVisibleCount(8); }}>
                     {filter === "all" ? "ALL" : filter === "active" ? "ACTIVE" : filter === "attention" ? "NEEDS ATTENTION" : "COMPLETE"}
                     <span>{filter === "all" ? jobs.length : filter === "active" ? runningJobs : filter === "attention" ? jobs.filter((job) => ["failed", "awaiting_ai"].includes(job.status)).length : jobs.filter((job) => job.status === "complete").length}</span>
                   </button>
@@ -622,7 +623,7 @@ export default function Home() {
                   <JobRow
                     key={job.id}
                     job={job}
-                    archiveName={archives.find((archive) => archive.id === job.archive_id)?.file_name}
+                    archiveName={archiveById.get(job.archive_id)?.file_name}
                     index={String(index + 1).padStart(2, "0")}
                     busy={resumeBusyId === job.id}
                     onResume={() => void resume(job.id)}
@@ -748,7 +749,7 @@ function ArchiveRow({ archive, index, driveReady, busy, expanded, onToggleDetail
       <div className="archive-file-icon"><Icon name="file" size={18}/><small>{archive.file_name.toLowerCase().endsWith(".json") ? "JSON" : "ZIP"}</small></div>
       <div className="archive-row__main"><strong title={archive.file_name}>{archive.file_name}</strong><span>{formatBytes(archive.size_bytes)} <i>·</i> {formatDate(archive.created_at)}</span></div>
       <div className="archive-row__status"><StatusBadge status={archive.status}/><StatusBadge status={archive.drive_status} prefix="DRIVE / "/></div>
-      <button className="row-action archive-details-toggle" type="button" onClick={onToggleDetails} aria-expanded={expanded}>{expanded ? "CLOSE" : "DETAILS"}</button>
+      <button className="row-action archive-details-toggle" type="button" onClick={onToggleDetails} aria-label={(expanded ? "Hide details for " : "Show details for ") + archive.file_name} aria-expanded={expanded}>{expanded ? "CLOSE" : "DETAILS"}</button>
       {archive.drive_status !== "uploaded" && (
         <button className="row-action" onClick={onBackup} disabled={!driveReady || busy} title={driveReady ? "Queue Google Drive backup" : "Configure Google Drive first"}>
           {busy ? "..." : driveReady ? "BACKUP" : "DRIVE OFF"}
