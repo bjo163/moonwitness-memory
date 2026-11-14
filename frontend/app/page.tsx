@@ -141,14 +141,14 @@ export default function Home() {
       setJobs(nextJobs);
       setKnowledge(nextKnowledge);
       setSystem(nextSystem);
+      if (apiOnline !== true) setNotice("LOCAL ENGINE ONLINE");
       setApiOnline(true);
       setLastUpdated(new Date().toLocaleTimeString());
-      setNotice("LOCAL ENGINE ONLINE");
     } catch {
+      if (apiOnline !== false) setNotice("API OFFLINE // CHECK DOCKER COMPOSE");
       setApiOnline(false);
-      setNotice("API OFFLINE // CHECK DOCKER COMPOSE");
     }
-  }, []);
+  }, [apiOnline]);
 
   useEffect(() => {
     void refresh();
