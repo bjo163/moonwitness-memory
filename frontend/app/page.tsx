@@ -311,10 +311,7 @@ export default function Home() {
   async function search(event?: FormEvent<HTMLFormElement>) {
     event?.preventDefault();
     if (!query.trim()) {
-      setKnowledgeMode("latest");
-      setKnowledgeLimit(12);
-      setKnowledgeKind("all");
-      await refresh();
+      await clearKnowledgeSearch();
       return;
     }
     setSearching(true);
@@ -410,9 +407,9 @@ export default function Home() {
         <div className="sidebar-rule sidebar-rule--spaced"><span>ENGINE STATUS</span><i /></div>
         <div className="engine-list">
           <EngineStatus label="API CORE" status={apiOnline === null ? "checking" : apiOnline ? "online" : "offline"} />
-          <EngineStatus label="GEMINI KEY" status={!system ? "checking" : system.gemini_configured ? "ready" : "missing"} />
+          <EngineStatus label="GEMINI KEY" status={!system ? "checking" : system.gemini_configured ? "configured" : "missing"} />
           <EngineStatus label="LOCAL EMBEDDINGS" status={!system ? "checking" : system.embeddings_enabled ? "ready" : "optional"} />
-          <EngineStatus label="DRIVE BACKUP" status={!system ? "checking" : system.drive_configured ? "ready" : "optional"} />
+          <EngineStatus label="DRIVE BACKUP" status={!system ? "checking" : system.drive_configured ? "configured" : "optional"} />
           <EngineStatus label="JOB PIPELINE" status={apiOnline === false ? "offline" : counts.failed_jobs > 0 ? "warning" : counts.active_jobs > 0 ? "active" : apiOnline ? "idle" : "checking"} />
         </div>
 
@@ -621,10 +618,10 @@ export default function Home() {
   );
 }
 
-function EngineStatus({ label, status }: { label: string; status: "online" | "offline" | "idle" | "checking" | "warning" | "active" | "ready" | "missing" | "optional" }) {
+function EngineStatus({ label, status }: { label: string; status: "online" | "offline" | "idle" | "checking" | "warning" | "active" | "ready" | "configured" | "missing" | "optional" }) {
   const labels: Record<typeof status, string> = {
     online: "ONLINE", offline: "OFFLINE", idle: "IDLE", checking: "CHECKING",
-    warning: "ATTENTION", active: "ACTIVE", ready: "READY", missing: "SETUP", optional: "OPTIONAL",
+    warning: "ATTENTION", active: "ACTIVE", ready: "READY", configured: "CONFIGURED", missing: "SETUP", optional: "OPTIONAL",
   };
   return <div className="engine-status"><span>{label}</span><b className={"engine-status__value engine-status__value--" + status}><i/>{labels[status]}</b></div>;
 }
