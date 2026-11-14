@@ -29,15 +29,21 @@ type Archive = {
   drive_error?: string | null;
   created_at: string;
 };
+
+type ArchiveSort = "newest" | "largest" | "name";
+type QueueFilter = "all" | "active" | "attention" | "complete";
 type Job = {
   id: string;
   archive_id: string;
   mode?: string;
   status: string;
   cursor?: number;
+  attempts?: number;
   processed_conversations: number;
   total_conversations: number | null;
   error: string | null;
+  created_at?: string;
+  updated_at?: string;
 };
 type SourceMessage = { message_id: string; conversation_id: string; conversation_title: string; role: string; content: string; created_at?: string | null };
 type SourceData = { knowledge_id: string; archive_id: string; conversation_id: string; messages: SourceMessage[] };
@@ -50,6 +56,11 @@ type Knowledge = {
   confidence: number;
   conversation_id: string;
   tags?: string[];
+  entities?: string[];
+  archive_id?: string;
+  created_at?: string;
+  updated_at?: string;
+  source_message_ids?: string[];
 };
 type Theme = "dark" | "light";
 
@@ -101,6 +112,14 @@ export default function Home() {
   const [knowledgeLimit, setKnowledgeLimit] = useState(12);
   const [knowledgeKind, setKnowledgeKind] = useState("all");
   const [loadingMore, setLoadingMore] = useState(false);
+  const [archiveQuery, setArchiveQuery] = useState("");
+  const [archiveStatus, setArchiveStatus] = useState("all");
+  const [archiveDriveStatus, setArchiveDriveStatus] = useState("all");
+  const [archiveSort, setArchiveSort] = useState<ArchiveSort>("newest");
+  const [archiveVisibleCount, setArchiveVisibleCount] = useState(8);
+  const [expandedArchiveId, setExpandedArchiveId] = useState<string | null>(null);
+  const [queueFilter, setQueueFilter] = useState<QueueFilter>("all");
+  const [queueVisibleCount, setQueueVisibleCount] = useState(8);
   const sourcePanelRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
@@ -177,8 +196,8 @@ export default function Home() {
     try {
       const [c, a, j, k, s] = await Promise.all([
         fetch(API + "/api/dashboard", { cache: "no-store" }),
-        fetch(API + "/api/archives", { cache: "no-store" }),
-        fetch(API + "/api/jobs", { cache: "no-store" }),
+        fetch(API + "/api/archives?limit=500", { cache: "no-store" }),
+        fetch(API + "/api/jobs?limit=500", { cache: "no-store" }),
         fetch(API + "/api/knowledge?limit=" + knowledgeLimit, { cache: "no-store" }),
         fetch(API + "/api/system", { cache: "no-store" }),
       ]);
@@ -206,10 +225,28 @@ export default function Home() {
     return () => window.clearInterval(timer);
   }, [refresh]);
 
-  const recentArchives = useMemo(() => archives.slice(0, 5), [archives]);
-  const recentJobs = useMemo(() => jobs.slice(0, 5), [jobs]);
   const runningJobs = jobs.filter((job) => ["pending", "processing", "retry"].includes(job.status)).length;
   const storageTotal = archives.reduce((sum, archive) => sum + archive.size_bytes, 0);
+  const visibleArchives = useMemo(() => {
+    const needle = archiveQuery.trim().toLowerCase();
+    const filtered = archives.filter((archive) => {
+      const matchesName = !needle || archive.file_name.toLowerCase().includes(needle) || archive.id.toLowerCase().includes(needle);
+      const matchesStatus = archiveStatus === "all" || archive.status.toLowerCase() === archiveStatus;
+      const matchesDrive = archiveDriveStatus === "all" || archive.drive_status.toLowerCase() === archiveDriveStatus;
+      return matchesName && matchesStatus && matchesDrive;
+    });
+    return filtered.sort((a, b) => {
+      if (archiveSort === "largest") return b.size_bytes - a.size_bytes;
+      if (archiveSort === "name") return a.file_name.localeCompare(b.file_name);
+      return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+    });
+  }, [archives, archiveQuery, archiveStatus, archiveDriveStatus, archiveSort]);
+  const visibleJobs = useMemo(() => jobs.filter((job) => {
+    if (queueFilter === "active") return ["pending", "processing", "retry"].includes(job.status);
+    if (queueFilter === "attention") return ["failed", "awaiting_ai"].includes(job.status);
+    if (queueFilter === "complete") return job.status === "complete";
+    return true;
+  }), [jobs, queueFilter]);
   const visibleKnowledge = useMemo(
     () => knowledge.filter((item) => knowledgeKind === "all" || (item.kind || "concept").toLowerCase() === knowledgeKind),
     [knowledge, knowledgeKind],
@@ -277,6 +314,19 @@ export default function Home() {
     setDragging(false);
     const file = event.dataTransfer.files?.[0];
     if (file) void handleUpload(file);
+  }
+
+  async function copyText(value: string, label: string) {
+    if (!value) {
+      setNotice("NOTHING TO COPY");
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(value);
+      setNotice(label + " COPIED TO CLIPBOARD");
+    } catch {
+      setNotice("COPY BLOCKED BY BROWSER // SELECT THE VALUE MANUALLY");
+    }
   }
 
   async function backup(archiveId: string) {
