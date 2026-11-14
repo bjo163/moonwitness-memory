@@ -116,6 +116,7 @@ export default function Home() {
   const [expandedArchiveId, setExpandedArchiveId] = useState<string | null>(null);
   const [queueFilter, setQueueFilter] = useState<QueueFilter>("all");
   const [queueVisibleCount, setQueueVisibleCount] = useState(8);
+  const uploadInputRef = useRef<HTMLInputElement | null>(null);
   const sourcePanelRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
@@ -498,7 +499,7 @@ export default function Home() {
                     <Icon name="upload" size={17}/>
                     <span>{busy ? "INGESTING..." : "INGEST ARCHIVE"}</span>
                     <b>↗</b>
-                    <input type="file" accept=".zip,.json,application/zip,application/json" onChange={onFileChange} disabled={busy}/>
+                    <input ref={uploadInputRef} type="file" accept=".zip,.json,application/zip,application/json" onChange={onFileChange} disabled={busy}/>
                   </label>
                   <a className="secondary-action" href="#vault">OPEN THE VAULT <Icon name="arrow-right" size={15}/></a>
                 </div>
@@ -538,7 +539,17 @@ export default function Home() {
                 onDragOver={(event) => { event.preventDefault(); setDragging(true); }}
                 onDragLeave={(event) => { event.preventDefault(); setDragging(false); }}
                 onDrop={onDrop}
-                aria-label="Drop a ChatGPT archive to import"
+                onClick={() => { if (!busy) uploadInputRef.current?.click(); }}
+                onKeyDown={(event) => {
+                  if ((event.key === "Enter" || event.key === " ") && !busy) {
+                    event.preventDefault();
+                    uploadInputRef.current?.click();
+                  }
+                }}
+                role="button"
+                tabIndex={busy ? -1 : 0}
+                aria-disabled={busy}
+                aria-label="Choose or drop a ChatGPT archive to import"
               >
                 <div className="drop-icon"><Icon name="folder" size={23}/><span>+</span></div>
                 <div className="drop-copy"><strong>{busy ? "ARCHIVE IN TRANSMISSION..." : dragging ? "DROP IT. WE'LL SORT IT." : "DROP YOUR HISTORY HERE"}</strong><span>ZIP EXPORT OR CONVERSATIONS.JSON</span></div>
