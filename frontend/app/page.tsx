@@ -92,6 +92,7 @@ export default function Home() {
   const [selectedKnowledge, setSelectedKnowledge] = useState<Knowledge | null>(null);
   const [sourceData, setSourceData] = useState<SourceData | null>(null);
   const [sourceLoading, setSourceLoading] = useState(false);
+  const [sourceError, setSourceError] = useState<string | null>(null);
 
   useEffect(() => {
     const stored = window.localStorage.getItem("mw-memory-theme");
@@ -102,6 +103,25 @@ export default function Home() {
     document.documentElement.dataset.theme = theme;
     window.localStorage.setItem("mw-memory-theme", theme);
   }, [theme]);
+
+  useEffect(() => {
+    if (!selectedKnowledge) return;
+    const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setSelectedKnowledge(null);
+        setSourceData(null);
+        setSourceError(null);
+      }
+    };
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.body.style.overflow = "";
+      window.removeEventListener("keydown", onKeyDown);
+      previousFocus?.focus();
+    };
+  }, [selectedKnowledge]);
 
   const refresh = useCallback(async () => {
     try {
@@ -236,6 +256,7 @@ export default function Home() {
   async function openSources(item: Knowledge) {
     setSelectedKnowledge(item);
     setSourceData(null);
+    setSourceError(null);
     setSourceLoading(true);
     try {
       const response = await fetch(API + "/api/knowledge/" + encodeURIComponent(item.id) + "/sources", { cache: "no-store" });
@@ -243,7 +264,9 @@ export default function Home() {
       if (!response.ok) throw new Error(result.detail || "SOURCE LOOKUP FAILED");
       setSourceData(result);
     } catch (error) {
-      setNotice(error instanceof Error ? error.message : "SOURCE LOOKUP FAILED");
+      const message = error instanceof Error ? error.message : "SOURCE LOOKUP FAILED";
+      setSourceError(message);
+      setNotice(message);
     } finally {
       setSourceLoading(false);
     }
@@ -428,7 +451,7 @@ export default function Home() {
             <div className="source-modal__top"><span>PROVENANCE / KNOWLEDGE NODE</span><button onClick={() => { setSelectedKnowledge(null); setSourceData(null); }} aria-label="Close source details"><Icon name="close" size={17}/></button></div>
             <div className="source-modal__heading"><span>{selectedKnowledge.kind.toUpperCase()} / {Math.round(selectedKnowledge.confidence * 100)}% CONFIDENCE</span><h2 id="source-modal-title">{selectedKnowledge.title}</h2><p>{selectedKnowledge.summary}</p></div>
             <div className="source-modal__trail"><span>ARCHIVE / {sourceData?.archive_id.slice(0, 12).toUpperCase() ?? "RESOLVING..."}</span><span>CONVERSATION / {sourceData?.conversation_id.slice(0, 12).toUpperCase() ?? selectedKnowledge.conversation_id.slice(0, 12).toUpperCase()}</span></div>
-            {sourceLoading ? <EmptyState icon={<Icon name="refresh" size={20}/>} title="TRACING THE SIGNAL" detail="Resolving this knowledge node back to its original messages..."/> : (
+            {sourceLoading ? <EmptyState icon={<Icon name="refresh" size={20}/>} title="TRACING THE SIGNAL" detail="Resolving this knowledge node back to its original messages..."/> : sourceError ? <EmptyState icon={<Icon name="alert" size={20}/>} title="TRACE INTERRUPTED" detail={sourceError + " — close this reader and try again."}/> : (
               <div className="source-message-list">
                 {(sourceData?.messages ?? []).length === 0 ? <EmptyState icon={<Icon name="alert" size={20}/>} title="SOURCE NOT FOUND" detail="No original messages were returned for this knowledge node."/> : sourceData?.messages.map((message) => (
                   <article className="source-message" key={message.message_id}>
