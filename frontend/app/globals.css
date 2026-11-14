@@ -356,3 +356,12 @@ a{color:inherit}
   .knowledge-node-taxonomy>div{grid-template-columns:58px minmax(0,1fr)}
   .source-modal__foot{font-size:6px}
 }
+
+.drop-zone{cursor:pointer}
+.drop-zone:hover:not(.drop-zone--busy){border-color:var(--acid);background:var(--acid-soft)}
+.drop-zone:focus-visible{outline:2px solid var(--acid);outline-offset:3px}
+.source-modal__panel{overflow:hidden}
+.source-message-list{flex:1;min-height:90px;overflow:auto}
+@media(max-width:1180px){
+  .archive-row .row-action{grid-column:auto;grid-row:auto;justify-self:stretch;margin:0}
+}
