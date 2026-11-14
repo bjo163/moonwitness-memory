@@ -54,7 +54,10 @@ Fonts are progressive enhancement; the interface must remain legible when remote
 - Every action should provide a visible status or disabled state. Large archive transfers expose byte-transfer progress rather than a fake timer.
 - Engine labels distinguish API reachability, configured credentials, optional integrations and queued/failed jobs. A configured integration must not be presented as a verified live connection.
 - Search, import, resume, Drive backup and NDJSON export stay connected to the real API. Search results remain stable during dashboard polling.
-- Knowledge supports type filtering and incremental loading through the existing bounded REST limit.
+- The Vault exposes archive search by filename/ID, processing and Drive filters, newest/largest/name sorting, and expandable integrity/backup metadata. Keep original SHA-256 and Drive errors inspectable; do not invent download or delete actions when the API does not expose them.
+- The Work Queue supports all/active/attention/complete filters, archive context, attempts and checkpoint progress. Backup-only jobs must not display a fabricated conversation percentage.
+- Knowledge supports type filtering and incremental loading through the existing bounded REST limit. Cards expose tags; the node reader shows full extracted content, tags, entities and the original source-message trail.
+- The archive drop target works with mouse, drag-and-drop and keyboard activation.
 - Knowledge cards open a keyboard-accessible provenance reader with Escape dismissal, focus trapping, scroll locking and focus restoration.
 - Keep Vault, Queue and Knowledge as clearly indexed areas within the single-page command deck; do not split the local utility into disconnected pages.
 
