@@ -7,7 +7,7 @@ from .ai import GeminiExtractor
 from .archive import chunk_messages, iter_conversations
 from .config import get_settings
 from .db import (
-    claim_job, get_archive, init_db, save_knowledge, save_messages,
+    claim_job, create_sync_job, get_archive, init_db, save_knowledge, save_messages,
     update_archive, update_job,
 )
 from .embeddings import index_knowledge
@@ -32,6 +32,12 @@ def process_job(job: dict[str, Any]) -> None:
     archive = get_archive(job["archive_id"])
     if not archive:
         raise RuntimeError("Archive record no longer exists")
+    if job.get("mode") == "sync_only":
+        synced = sync_to_moonwitness(archive["id"])
+        update_job(job["id"], status="complete", error=None)
+        log.info("Synced %s knowledge records for archive %s", synced, archive["id"])
+        return
+
     path = Path(archive["file_path"])
     if not path.is_file():
         raise FileNotFoundError(f"Archive file is missing: {path}")
@@ -87,12 +93,10 @@ def process_job(job: dict[str, Any]) -> None:
         raise ValueError("No ChatGPT conversations found in this archive")
     update_job(job["id"], total_conversations=total)
 
-    try:
-        synced = sync_to_moonwitness(archive["id"])
-        if synced:
-            log.info("Synced %s knowledge records to MoonWitness receiver", synced)
-    except Exception:
-        log.exception("MoonWitness webhook sync failed; local NDJSON export remains available")
+    if settings.moonwitness_sync_url:
+        sync_job_id = create_sync_job(archive["id"])
+        if sync_job_id:
+            log.info("Queued MoonWitness delivery job %s", sync_job_id)
 
     export_corpus()
     update_archive(archive["id"], status="complete")

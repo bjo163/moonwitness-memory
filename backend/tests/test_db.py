@@ -29,6 +29,33 @@ def test_resume_checkpoint_and_backup_job(monkeypatch, tmp_path):
     assert backup_id
 
 
+def test_sync_job_is_independent_and_deduplicated(monkeypatch, tmp_path):
+    from app.config import Settings
+    settings = Settings(data_dir=tmp_path)
+    monkeypatch.setattr("app.db.get_settings", lambda: settings)
+    db.init_db()
+    archive, created = db.create_archive(
+        "test.zip", str(tmp_path / "test.zip"), 10, "d" * 64
+    )
+    assert created
+
+    first = db.create_sync_job(archive["id"])
+    second = db.create_sync_job(archive["id"])
+    assert first == second
+
+    job = db.claim_job()
+    assert job["id"] == first
+    assert job["mode"] == "sync_only"
+    db.update_job(first, status="retry", error="receiver unavailable")
+
+    retry = db.create_sync_job(archive["id"])
+    assert retry == first
+    assert db.claim_job()["id"] == first
+
+    db.update_job(first, status="complete")
+    later = db.create_sync_job(archive["id"])
+    assert later != first
+
 
 def test_stream_knowledge_export_and_source_provenance(monkeypatch, tmp_path):
     from app.config import Settings
