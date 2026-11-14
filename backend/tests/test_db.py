@@ -39,6 +39,7 @@ def test_sync_job_is_independent_and_deduplicated(monkeypatch, tmp_path):
     )
     assert created
 
+    db.update_job(archive["job_id"], status="complete")
     first = db.create_sync_job(archive["id"])
     second = db.create_sync_job(archive["id"])
     assert first == second
