@@ -74,7 +74,7 @@ if ($withSources.Count -gt 0) {
     }
 }
 else {
-    Write-Warning "No extracted record in the first 500 items had source_message_ids; provenance could not be verified."
+    throw "No extracted knowledge record contains source_message_ids; provenance verification cannot pass."
 }
 Write-Host ("[3/5] Extraction complete: {0} knowledge records; provenance checked." -f $knowledge.Count) -ForegroundColor Green
 
