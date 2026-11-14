@@ -549,22 +549,42 @@ export default function Home() {
                   <small>{uploadProgress === 100 ? "ARCHIVE RECEIVED // QUEUING WORKER" : "STREAMING DIRECTLY TO LOCAL VAULT"}</small>
                 </div>
               )}
-              <div className="list-heading"><span>RECENT CAPTURES</span><a href="#vault">VIEW ALL <Icon name="arrow-up-right" size={12}/></a></div>
+              <div className="vault-toolbar">
+                <label className="vault-search"><Icon name="search" size={15}/><input value={archiveQuery} onChange={(event) => { setArchiveQuery(event.target.value); setArchiveVisibleCount(8); }} placeholder="Find an archive or ID..." aria-label="Search archives"/>{archiveQuery && <button type="button" onClick={() => setArchiveQuery("")} aria-label="Clear archive search"><Icon name="close" size={13}/></button>}</label>
+                <div className="vault-selects">
+                  <label><span>PROCESS</span><select value={archiveStatus} onChange={(event) => { setArchiveStatus(event.target.value); setArchiveVisibleCount(8); }} aria-label="Filter archives by processing status">
+                    <option value="all">ALL STATUS</option>
+                    {Array.from(new Set(archives.map((archive) => archive.status.toLowerCase()))).sort().map((status) => <option key={status} value={status}>{status.replaceAll("_", " ").toUpperCase()}</option>)}
+                  </select></label>
+                  <label><span>DRIVE</span><select value={archiveDriveStatus} onChange={(event) => { setArchiveDriveStatus(event.target.value); setArchiveVisibleCount(8); }} aria-label="Filter archives by Drive status">
+                    <option value="all">ALL DRIVE</option>
+                    {Array.from(new Set(archives.map((archive) => archive.drive_status.toLowerCase()))).sort().map((status) => <option key={status} value={status}>{status.replaceAll("_", " ").toUpperCase()}</option>)}
+                  </select></label>
+                  <label><span>SORT</span><select value={archiveSort} onChange={(event) => setArchiveSort(event.target.value as ArchiveSort)} aria-label="Sort archives">
+                    <option value="newest">NEWEST</option><option value="largest">LARGEST</option><option value="name">NAME A–Z</option>
+                  </select></label>
+                </div>
+              </div>
+              <div className="vault-list-heading"><span>ARCHIVE RECORDS / {visibleArchives.length} MATCHES</span><span>{formatBytes(storageTotal)} STORED</span></div>
               <div className="archive-list">
-                {recentArchives.length === 0 ? (
-                  <EmptyState icon={<Icon name="archive" size={22}/>} title="THE VAULT IS QUIET" detail="Import your first ChatGPT export. Original files stay on this machine."/>
-                ) : recentArchives.map((archive, index) => (
+                {visibleArchives.length === 0 ? (
+                  <EmptyState icon={<Icon name="archive" size={22}/>} title={archives.length ? "NO ARCHIVE MATCH" : "THE VAULT IS QUIET"} detail={archives.length ? "Change the name search or status filters to find another archive." : "Import your first ChatGPT export. Original files stay on this machine."}/>
+                ) : visibleArchives.slice(0, archiveVisibleCount).map((archive, index) => (
                   <ArchiveRow
                     key={archive.id}
                     archive={archive}
                     index={String(index + 1).padStart(2, "0")}
                     driveReady={Boolean(system?.drive_configured)}
                     busy={backupBusyId === archive.id}
+                    expanded={expandedArchiveId === archive.id}
+                    onToggleDetails={() => setExpandedArchiveId(expandedArchiveId === archive.id ? null : archive.id)}
+                    onCopy={(value, label) => void copyText(value, label)}
                     onBackup={() => void backup(archive.id)}
                   />
                 ))}
               </div>
-              <div className="panel-tail"><span>ORIGINALS ARE NEVER MODIFIED</span><span>{archives.length} TOTAL ARCHIVES <i>↗</i></span></div>
+              {visibleArchives.length > archiveVisibleCount && <button className="load-more-button vault-load-more" onClick={() => setArchiveVisibleCount((count) => Math.min(count + 8, visibleArchives.length))}>SHOW MORE ARCHIVES <Icon name="arrow-down" size={13}/></button>}
+              <div className="panel-tail"><span>ORIGINALS ARE NEVER MODIFIED</span><span>SHOWING {Math.min(archiveVisibleCount, visibleArchives.length)} / {visibleArchives.length} <i>↗</i></span></div>
             </Panel>
 
             <Panel className="queue-panel" id="queue">
@@ -572,21 +592,31 @@ export default function Home() {
               <div className="queue-summary">
                 <div><strong>{runningJobs.toString().padStart(2, "0")}</strong><span>IN MOTION</span></div>
                 <div><strong className={counts.failed_jobs ? "text-orange" : ""}>{counts.failed_jobs.toString().padStart(2, "0")}</strong><span>NEED REPAIR</span></div>
-                <div><strong>{counts.active_jobs.toString().padStart(2, "0")}</strong><span>IN QUEUE</span></div>
+                <div><strong>{jobs.filter((job) => job.status === "complete").length.toString().padStart(2, "0")}</strong><span>COMPLETE</span></div>
+              </div>
+              <div className="queue-filters" role="group" aria-label="Filter worker jobs">
+                {(["all", "active", "attention", "complete"] as QueueFilter[]).map((filter) => (
+                  <button key={filter} type="button" className={queueFilter === filter ? "queue-filter queue-filter--active" : "queue-filter"} onClick={() => { setQueueFilter(filter); setQueueVisibleCount(8); }}>
+                    {filter === "all" ? "ALL" : filter === "active" ? "ACTIVE" : filter === "attention" ? "NEEDS ATTENTION" : "COMPLETE"}
+                    <span>{filter === "all" ? jobs.length : filter === "active" ? runningJobs : filter === "attention" ? jobs.filter((job) => ["failed", "awaiting_ai"].includes(job.status)).length : jobs.filter((job) => job.status === "complete").length}</span>
+                  </button>
+                ))}
               </div>
               <div className="job-list">
-                {recentJobs.length === 0 ? (
-                  <EmptyState icon={<Icon name="activity" size={22}/>} title="NO ACTIVE TRANSMISSIONS" detail="Ingest an archive to start the extraction pipeline."/>
-                ) : recentJobs.map((job, index) => (
+                {visibleJobs.length === 0 ? (
+                  <EmptyState icon={<Icon name="activity" size={22}/>} title={queueFilter === "attention" ? "NO JOBS NEED REPAIR" : "NO TRANSMISSIONS HERE"} detail={queueFilter === "all" ? "Ingest an archive to start the extraction pipeline." : "Switch the queue filter to inspect other job states."}/>
+                ) : visibleJobs.slice(0, queueVisibleCount).map((job, index) => (
                   <JobRow
                     key={job.id}
                     job={job}
+                    archiveName={archives.find((archive) => archive.id === job.archive_id)?.file_name}
                     index={String(index + 1).padStart(2, "0")}
                     busy={resumeBusyId === job.id}
                     onResume={() => void resume(job.id)}
                   />
                 ))}
               </div>
+              {visibleJobs.length > queueVisibleCount && <button className="load-more-button queue-load-more" onClick={() => setQueueVisibleCount((count) => Math.min(count + 8, visibleJobs.length))}>MORE JOBS <Icon name="arrow-down" size={13}/></button>}
               <div className="queue-foot"><span><i className="legend-dot legend-dot--lime"/> PROCESSING</span><span><i className="legend-dot legend-dot--orange"/> ATTENTION</span><span><i className="legend-dot legend-dot--grey"/> WAITING</span></div>
             </Panel>
           </section>
