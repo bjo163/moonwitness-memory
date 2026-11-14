@@ -104,7 +104,8 @@ export default function Home() {
   const sourcePanelRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
-    const stored = window.localStorage.getItem("mw-memory-theme");
+    let stored: string | null = null;
+    try { stored = window.localStorage.getItem("mw-memory-theme"); } catch { /* Keep the preloaded theme when storage is unavailable. */ }
     const preloaded = document.documentElement.dataset.theme;
     const initial = stored === "light" || stored === "dark" ? stored : preloaded === "light" ? "light" : "dark";
     setTheme(initial);
@@ -115,7 +116,7 @@ export default function Home() {
   useEffect(() => {
     if (!themeReady) return;
     document.documentElement.dataset.theme = theme;
-    window.localStorage.setItem("mw-memory-theme", theme);
+    try { window.localStorage.setItem("mw-memory-theme", theme); } catch { /* Theme still applies for this session. */ }
   }, [theme, themeReady]);
 
   useEffect(() => {
