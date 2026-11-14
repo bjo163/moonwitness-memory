@@ -283,3 +283,5 @@ a{color:inherit}
 @media(prefers-reduced-motion:reduce){
   .upload-progress__track i,.load-more-button{transition:none}
 }
+
+.engine-status__value--configured{color:#d0a952}
