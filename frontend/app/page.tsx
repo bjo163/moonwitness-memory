@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ChangeEvent, DragEvent, FormEvent } from "react";
 import { Icon } from "../components/icon";
 import { MangaArchivist } from "../components/manga-archivist";
-import { ActionButton, EmptyState, MetricCard, Panel, SectionLabel, StatusBadge } from "../components/ui";
+import { EmptyState, MetricCard, Panel, SectionLabel, StatusBadge } from "../components/ui";
 
 const API = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000";
 
@@ -78,10 +78,6 @@ function formatDate(value: string) {
   return Number.isNaN(date.getTime())
     ? "DATE UNKNOWN"
     : date.toLocaleString(undefined, { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" });
-}
-
-function initials(value: string) {
-  return value.slice(0, 2).toUpperCase();
 }
 
 export default function Home() {
@@ -531,6 +527,12 @@ export default function Home() {
           <section className="workbench-grid">
             <Panel className="vault-panel" id="vault">
               <SectionLabel index="01 / INGESTION" title="THE ARCHIVE VAULT" trailing={<span className="panel-counter">{archives.length.toString().padStart(2, "0")} RECORDS</span>}/>
+              <div className="vault-stat-strip">
+                <div><strong>{archives.length.toLocaleString()}</strong><span>ORIGINALS</span></div>
+                <div><strong>{archives.filter((archive) => archive.status === "complete").length.toLocaleString()}</strong><span>PROCESSED</span></div>
+                <div><strong>{archives.filter((archive) => archive.drive_status === "uploaded").length.toLocaleString()}</strong><span>IN DRIVE</span></div>
+                <div><strong className={archives.some((archive) => ["failed", "awaiting_ai"].includes(archive.status)) ? "text-orange" : ""}>{archives.filter((archive) => ["failed", "awaiting_ai"].includes(archive.status)).length.toLocaleString()}</strong><span>ATTENTION</span></div>
+              </div>
               <div
                 className={"drop-zone " + (dragging ? "drop-zone--active" : "") + (busy ? "drop-zone--busy" : "")}
                 onDragOver={(event) => { event.preventDefault(); setDragging(true); }}
@@ -674,6 +676,7 @@ export default function Home() {
           <section className="source-modal__panel" ref={sourcePanelRef} tabIndex={-1}>
             <div className="source-modal__top"><span>PROVENANCE / KNOWLEDGE NODE</span><button onClick={() => { setSelectedKnowledge(null); setSourceData(null); }} aria-label="Close source details"><Icon name="close" size={17}/></button></div>
             <div className="source-modal__heading"><span>{selectedKnowledge.kind.toUpperCase()} / {Math.round(selectedKnowledge.confidence * 100)}% CONFIDENCE</span><h2 id="source-modal-title">{selectedKnowledge.title}</h2><p>{selectedKnowledge.summary}</p></div>
+            <div className="knowledge-node-meta"><span>NODE / {selectedKnowledge.id.slice(0, 16).toUpperCase()}</span><span>CONVERSATION / {selectedKnowledge.conversation_id.slice(0, 16).toUpperCase()}</span><span>CREATED / {selectedKnowledge.created_at ? formatDate(selectedKnowledge.created_at) : "UNKNOWN"}</span></div>
             <div className="knowledge-node-content">
               <div className="knowledge-node-content__top"><span>EXTRACTED RECORD / FULL TEXT</span><button onClick={() => void copyText(selectedKnowledge.content || selectedKnowledge.summary || selectedKnowledge.title, "KNOWLEDGE NODE")}>COPY NODE ↗</button></div>
               <p>{selectedKnowledge.content || selectedKnowledge.summary || "No extracted content was stored for this node."}</p>
@@ -692,6 +695,7 @@ export default function Home() {
                 {(sourceData?.messages ?? []).length === 0 ? <EmptyState icon={<Icon name="alert" size={20}/>} title="SOURCE NOT FOUND" detail="No original messages were returned for this knowledge node."/> : sourceData?.messages.map((message) => (
                   <article className="source-message" key={message.message_id}>
                     <div><span>{message.role.toUpperCase()}</span><small>{message.created_at ? formatDate(message.created_at) : "TIMESTAMP UNKNOWN"}</small></div>
+                    <small className="source-message__conversation">{message.conversation_title}</small>
                     <p>{message.content}</p>
                     <small>MESSAGE ID / {message.message_id}</small>
                   </article>
@@ -762,7 +766,7 @@ function JobRow({ job, archiveName, index, busy, onResume }: { job: Job; archive
       <div className="job-row__main">
         <div className="job-title-line"><strong>{mode}</strong><StatusBadge status={job.status}/></div>
         <div className="job-meta"><span title={archiveName || job.archive_id}>{archiveName || "ARCHIVE / " + job.archive_id.slice(0, 8).toUpperCase()}</span><span>{job.processed_conversations.toLocaleString()} {total > 0 ? "/ " + total.toLocaleString() : ""} CONVERSATIONS</span></div>
-        <div className="progress-track" role="progressbar" aria-label={"Job progress " + progress + "%"} aria-valuemin={0} aria-valuemax={100} aria-valuenow={progress}><i style={{ width: progress + "%" }}/></div>
+        {total > 0 ? <div className="progress-track" role="progressbar" aria-label={"Job progress " + progress + "%"} aria-valuemin={0} aria-valuemax={100} aria-valuenow={progress}><i style={{ width: progress + "%" }}/></div> : <div className="job-task-state">{job.mode === "backup_only" ? "DRIVE OBJECT TRANSFER" : "WAITING FOR CONVERSATION SCAN"}</div>}
         <div className="job-secondary-meta"><span>JOB / {job.id.slice(0, 8).toUpperCase()}</span><span>ATTEMPTS / {job.attempts ?? 0}</span>{job.updated_at && <span>UPDATED / {formatDate(job.updated_at)}</span>}</div>
         {job.error && <p className="job-error"><Icon name="alert" size={12}/>{job.error}</p>}
       </div>
@@ -775,11 +779,12 @@ function KnowledgeCard({ item, index, onOpen }: { item: Knowledge; index: string
   const kind = (item.kind || "concept").toLowerCase();
   const confidence = Math.max(0, Math.min(100, Math.round((item.confidence ?? 0) * 100)));
   return (
-    <button type="button" className={"knowledge-card knowledge-card--" + kind} onClick={onOpen} aria-label={"Inspect source messages for " + item.title}>
+    <button type="button" className={"knowledge-card knowledge-card--" + kind} onClick={onOpen} aria-label={"Inspect knowledge record and source messages for " + item.title}>
       <div className="knowledge-card__top"><span className="knowledge-index">{index} / {kind}</span><span className="confidence">{confidence}% <i>CONF.</i></span></div>
       <span className="knowledge-card__slash"/>
       <h3>{item.title}</h3>
       <p>{item.summary || "No summary supplied. Open the source trail to inspect the extracted fragment."}</p>
+      {(item.tags?.length ?? 0) > 0 && <div className="knowledge-card__tags">{item.tags?.slice(0, 3).map((tag) => <span key={tag}>{tag}</span>)}</div>}
       <div className="knowledge-card__bottom"><span>SOURCE / {item.conversation_id.slice(0, 12).toUpperCase()}</span><span>↗</span></div>
     </button>
   );
