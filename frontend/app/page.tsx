@@ -674,6 +674,16 @@ export default function Home() {
           <section className="source-modal__panel" ref={sourcePanelRef} tabIndex={-1}>
             <div className="source-modal__top"><span>PROVENANCE / KNOWLEDGE NODE</span><button onClick={() => { setSelectedKnowledge(null); setSourceData(null); }} aria-label="Close source details"><Icon name="close" size={17}/></button></div>
             <div className="source-modal__heading"><span>{selectedKnowledge.kind.toUpperCase()} / {Math.round(selectedKnowledge.confidence * 100)}% CONFIDENCE</span><h2 id="source-modal-title">{selectedKnowledge.title}</h2><p>{selectedKnowledge.summary}</p></div>
+            <div className="knowledge-node-content">
+              <div className="knowledge-node-content__top"><span>EXTRACTED RECORD / FULL TEXT</span><button onClick={() => void copyText(selectedKnowledge.content || selectedKnowledge.summary || selectedKnowledge.title, "KNOWLEDGE NODE")}>COPY NODE ↗</button></div>
+              <p>{selectedKnowledge.content || selectedKnowledge.summary || "No extracted content was stored for this node."}</p>
+            </div>
+            {((selectedKnowledge.tags?.length ?? 0) > 0 || (selectedKnowledge.entities?.length ?? 0) > 0) && (
+              <div className="knowledge-node-taxonomy">
+                {Boolean(selectedKnowledge.tags?.length) && <div><span>TAGS</span><div>{selectedKnowledge.tags?.map((tag) => <b key={tag}>{tag}</b>)}</div></div>}
+                {Boolean(selectedKnowledge.entities?.length) && <div><span>ENTITIES</span><div>{selectedKnowledge.entities?.map((entity) => <b key={entity}>{entity}</b>)}</div></div>}
+              </div>
+            )}
             <div className="source-modal__trail"><span>ARCHIVE / {sourceData?.archive_id.slice(0, 12).toUpperCase() ?? "RESOLVING..."}</span><span>CONVERSATION / {sourceData?.conversation_id.slice(0, 12).toUpperCase() ?? selectedKnowledge.conversation_id.slice(0, 12).toUpperCase()}</span></div>
             {sourceLoading ? <EmptyState icon={<Icon name="refresh" size={20}/>} title="TRACING THE SIGNAL" detail="Resolving this knowledge node back to its original messages..."/> : sourceError ? (
               <div className="source-error" role="alert"><Icon name="alert" size={22}/><strong>TRACE INTERRUPTED</strong><p>{sourceError}</p><button onClick={() => void openSources(selectedKnowledge)}>RETRY SOURCE TRACE ↗</button></div>
@@ -688,7 +698,7 @@ export default function Home() {
                 ))}
               </div>
             )}
-            <div className="source-modal__foot"><span>ORIGINAL MESSAGE PROVENANCE</span><span>MW / SOURCE TRACE</span></div>
+            <div className="source-modal__foot"><span>{sourceData?.messages.length ?? selectedKnowledge.source_message_ids?.length ?? 0} SOURCE MESSAGES / PROVENANCE</span><button onClick={() => void copyText(selectedKnowledge.id, "KNOWLEDGE ID")}>COPY NODE ID ↗</button></div>
           </section>
         </div>
       )}
@@ -707,23 +717,41 @@ function EngineStatus({ label, status }: { label: string; status: "online" | "of
   return <div className="engine-status"><span>{label}</span><b className={"engine-status__value engine-status__value--" + status}><i/>{labels[status]}</b></div>;
 }
 
-function ArchiveRow({ archive, index, driveReady, busy, onBackup }: { archive: Archive; index: string; driveReady: boolean; busy: boolean; onBackup: () => void }) {
+function ArchiveRow({ archive, index, driveReady, busy, expanded, onToggleDetails, onCopy, onBackup }: {
+  archive: Archive;
+  index: string;
+  driveReady: boolean;
+  busy: boolean;
+  expanded: boolean;
+  onToggleDetails: () => void;
+  onCopy: (value: string, label: string) => void;
+  onBackup: () => void;
+}) {
   return (
-    <article className="archive-row">
+    <article className={"archive-row " + (expanded ? "archive-row--expanded" : "")}>
       <span className="row-index">{index}</span>
-      <div className="archive-file-icon"><Icon name="file" size={18}/><small>ZIP</small></div>
+      <div className="archive-file-icon"><Icon name="file" size={18}/><small>{archive.file_name.toLowerCase().endsWith(".json") ? "JSON" : "ZIP"}</small></div>
       <div className="archive-row__main"><strong title={archive.file_name}>{archive.file_name}</strong><span>{formatBytes(archive.size_bytes)} <i>·</i> {formatDate(archive.created_at)}</span></div>
       <div className="archive-row__status"><StatusBadge status={archive.status}/><StatusBadge status={archive.drive_status} prefix="DRIVE / "/></div>
+      <button className="row-action archive-details-toggle" type="button" onClick={onToggleDetails} aria-expanded={expanded}>{expanded ? "CLOSE" : "DETAILS"}</button>
       {archive.drive_status !== "uploaded" && (
         <button className="row-action" onClick={onBackup} disabled={!driveReady || busy} title={driveReady ? "Queue Google Drive backup" : "Configure Google Drive first"}>
           {busy ? "..." : driveReady ? "BACKUP" : "DRIVE OFF"}
         </button>
       )}
+      {expanded && (
+        <div className="archive-row__details">
+          <div className="archive-detail"><span>ARCHIVE ID</span><code>{archive.id}</code><button onClick={() => onCopy(archive.id, "ARCHIVE ID")}>COPY</button></div>
+          <div className="archive-detail"><span>SHA-256 / ORIGINAL FINGERPRINT</span><code>{archive.sha256 || "NOT AVAILABLE"}</code>{archive.sha256 && <button onClick={() => onCopy(archive.sha256 || "", "SHA-256")}>COPY</button>}</div>
+          <div className="archive-detail"><span>DRIVE OBJECT</span><code>{archive.drive_key || "NOT BACKED UP"}</code>{archive.drive_key && <button onClick={() => onCopy(archive.drive_key || "", "DRIVE KEY")}>COPY</button>}</div>
+          {archive.drive_error && <p className="archive-drive-error"><Icon name="alert" size={13}/>{archive.drive_error}</p>}
+        </div>
+      )}
     </article>
   );
 }
 
-function JobRow({ job, index, busy, onResume }: { job: Job; index: string; busy: boolean; onResume: () => void }) {
+function JobRow({ job, archiveName, index, busy, onResume }: { job: Job; archiveName?: string; index: string; busy: boolean; onResume: () => void }) {
   const total = job.total_conversations ?? 0;
   const progress = total > 0 ? Math.min(100, Math.round((job.processed_conversations / total) * 100)) : 0;
   const canResume = ["awaiting_ai", "retry", "failed"].includes(job.status);
@@ -733,8 +761,9 @@ function JobRow({ job, index, busy, onResume }: { job: Job; index: string; busy:
       <span className="row-index">{index}</span>
       <div className="job-row__main">
         <div className="job-title-line"><strong>{mode}</strong><StatusBadge status={job.status}/></div>
-        <div className="job-meta"><span>ID / {job.id.slice(0, 8).toUpperCase()}</span><span>{job.processed_conversations.toLocaleString()} {total > 0 ? "/ " + total.toLocaleString() : ""} CONVERSATIONS</span></div>
-        <div className="progress-track"><i style={{ width: progress + "%" }}/></div>
+        <div className="job-meta"><span title={archiveName || job.archive_id}>{archiveName || "ARCHIVE / " + job.archive_id.slice(0, 8).toUpperCase()}</span><span>{job.processed_conversations.toLocaleString()} {total > 0 ? "/ " + total.toLocaleString() : ""} CONVERSATIONS</span></div>
+        <div className="progress-track" role="progressbar" aria-label={"Job progress " + progress + "%"} aria-valuemin={0} aria-valuemax={100} aria-valuenow={progress}><i style={{ width: progress + "%" }}/></div>
+        <div className="job-secondary-meta"><span>JOB / {job.id.slice(0, 8).toUpperCase()}</span><span>ATTEMPTS / {job.attempts ?? 0}</span>{job.updated_at && <span>UPDATED / {formatDate(job.updated_at)}</span>}</div>
         {job.error && <p className="job-error"><Icon name="alert" size={12}/>{job.error}</p>}
       </div>
       {canResume && <button className="resume-action" onClick={onResume} disabled={busy}>{busy ? "..." : "RESUME ↗"}</button>}
