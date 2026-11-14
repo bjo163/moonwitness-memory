@@ -709,7 +709,7 @@ export default function Home() {
                     <div><span>{message.role.toUpperCase()}</span><small>{message.created_at ? formatDate(message.created_at) : "TIMESTAMP UNKNOWN"}</small></div>
                     <small className="source-message__conversation">{message.conversation_title}</small>
                     <p>{message.content}</p>
-                    <small>MESSAGE ID / {message.message_id}</small>
+                    <div className="source-message__foot"><small>MESSAGE ID / {message.message_id}</small><button type="button" onClick={() => void copyText(message.content, "SOURCE MESSAGE")}>COPY MESSAGE ↗</button></div>
                   </article>
                 ))}
               </div>
