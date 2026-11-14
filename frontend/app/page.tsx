@@ -226,24 +226,42 @@ export default function Home() {
       return;
     }
     setBusy(true);
+    setUploadName(file.name);
+    setUploadProgress(0);
     setNotice("INGESTING // " + file.name);
     try {
-      const response = await fetch(API + "/api/archives", {
-        method: "POST",
-        body: file,
-        headers: {
-          "Content-Type": "application/octet-stream",
-          "X-Archive-Filename": encodeURIComponent(file.name),
-        },
+      const upload = await new Promise<{ status: number; body: string }>((resolve, reject) => {
+        const request = new XMLHttpRequest();
+        request.open("POST", API + "/api/archives");
+        request.responseType = "text";
+        request.setRequestHeader("Content-Type", "application/octet-stream");
+        request.setRequestHeader("X-Archive-Filename", encodeURIComponent(file.name));
+        request.upload.addEventListener("progress", (event) => {
+          if (event.lengthComputable) {
+            setUploadProgress(Math.max(0, Math.min(100, Math.round((event.loaded / event.total) * 100))));
+          }
+        });
+        request.addEventListener("load", () => resolve({ status: request.status, body: request.responseText }));
+        request.addEventListener("error", () => reject(new Error("UPLOAD NETWORK ERROR // CHECK API CONNECTION")));
+        request.addEventListener("abort", () => reject(new Error("UPLOAD CANCELLED")));
+        request.send(file);
       });
-      const result = await response.json();
-      if (!response.ok) throw new Error(result.detail || "Upload failed");
+      let result: { detail?: string; duplicate?: boolean };
+      try {
+        result = JSON.parse(upload.body) as { detail?: string; duplicate?: boolean };
+      } catch {
+        throw new Error("UPLOAD FAILED // INVALID API RESPONSE");
+      }
+      if (upload.status < 200 || upload.status >= 300) throw new Error(result.detail || "UPLOAD FAILED");
+      setUploadProgress(100);
       setNotice(result.duplicate ? "DUPLICATE // ORIGINAL ALREADY IN VAULT" : "ARCHIVE ACCEPTED // WORKER QUEUED");
       await refresh();
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "UPLOAD FAILED");
     } finally {
       setBusy(false);
+      setUploadProgress(null);
+      setUploadName(null);
     }
   }
 
@@ -293,10 +311,16 @@ export default function Home() {
   async function search(event?: FormEvent<HTMLFormElement>) {
     event?.preventDefault();
     if (!query.trim()) {
+      setKnowledgeMode("latest");
+      setKnowledgeLimit(12);
+      setKnowledgeKind("all");
       await refresh();
       return;
     }
     setSearching(true);
+    setKnowledgeMode("search");
+    setKnowledgeLimit(30);
+    setKnowledgeKind("all");
     try {
       const response = await fetch(API + "/api/search?q=" + encodeURIComponent(query.trim()) + "&limit=30", { cache: "no-store" });
       const result = await response.json();
@@ -307,6 +331,44 @@ export default function Home() {
       setNotice(error instanceof Error ? error.message : "SEARCH FAILED");
     } finally {
       setSearching(false);
+    }
+  }
+
+  async function clearKnowledgeSearch() {
+    setQuery("");
+    setKnowledgeMode("latest");
+    setKnowledgeLimit(12);
+    setKnowledgeKind("all");
+    setSearching(true);
+    try {
+      const response = await fetch(API + "/api/knowledge?limit=12", { cache: "no-store" });
+      if (!response.ok) throw new Error("KNOWLEDGE LOAD FAILED");
+      setKnowledge(await response.json());
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "KNOWLEDGE LOAD FAILED");
+    } finally {
+      setSearching(false);
+    }
+  }
+
+  async function loadMoreKnowledge() {
+    const maximum = knowledgeMode === "search" ? 100 : 500;
+    const nextLimit = Math.min(knowledgeLimit + 12, maximum);
+    if (nextLimit <= knowledgeLimit) return;
+    setLoadingMore(true);
+    try {
+      const endpoint = knowledgeMode === "search"
+        ? API + "/api/search?q=" + encodeURIComponent(query.trim()) + "&limit=" + nextLimit
+        : API + "/api/knowledge?limit=" + nextLimit;
+      const response = await fetch(endpoint, { cache: "no-store" });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.detail || "MORE KNOWLEDGE FAILED");
+      setKnowledge(result);
+      setKnowledgeLimit(nextLimit);
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "MORE KNOWLEDGE FAILED");
+    } finally {
+      setLoadingMore(false);
     }
   }
 
