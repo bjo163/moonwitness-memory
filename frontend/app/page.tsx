@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ChangeEvent, DragEvent, FormEvent } from "react";
 import { Icon } from "../components/icon";
 import { MangaArchivist } from "../components/manga-archivist";
@@ -75,12 +75,16 @@ function initials(value: string) {
 
 export default function Home() {
   const [theme, setTheme] = useState<Theme>("dark");
+  const [themeReady, setThemeReady] = useState(false);
+  const [activeSection, setActiveSection] = useState("overview");
   const [counts, setCounts] = useState<Counts>(initialCounts);
   const [archives, setArchives] = useState<Archive[]>([]);
   const [jobs, setJobs] = useState<Job[]>([]);
   const [knowledge, setKnowledge] = useState<Knowledge[]>([]);
   const [system, setSystem] = useState<SystemStatus | null>(null);
   const [busy, setBusy] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<number | null>(null);
+  const [uploadName, setUploadName] = useState<string | null>(null);
   const [backupBusyId, setBackupBusyId] = useState<string | null>(null);
   const [resumeBusyId, setResumeBusyId] = useState<string | null>(null);
   const [notice, setNotice] = useState("LOCAL ENGINE STANDBY");
@@ -93,31 +97,76 @@ export default function Home() {
   const [sourceData, setSourceData] = useState<SourceData | null>(null);
   const [sourceLoading, setSourceLoading] = useState(false);
   const [sourceError, setSourceError] = useState<string | null>(null);
+  const [knowledgeMode, setKnowledgeMode] = useState<"latest" | "search">("latest");
+  const [knowledgeLimit, setKnowledgeLimit] = useState(12);
+  const [knowledgeKind, setKnowledgeKind] = useState("all");
+  const [loadingMore, setLoadingMore] = useState(false);
+  const sourcePanelRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
     const stored = window.localStorage.getItem("mw-memory-theme");
-    if (stored === "light" || stored === "dark") setTheme(stored);
+    const preloaded = document.documentElement.dataset.theme;
+    const initial = stored === "light" || stored === "dark" ? stored : preloaded === "light" ? "light" : "dark";
+    setTheme(initial);
+    document.documentElement.dataset.theme = initial;
+    setThemeReady(true);
   }, []);
 
   useEffect(() => {
+    if (!themeReady) return;
     document.documentElement.dataset.theme = theme;
     window.localStorage.setItem("mw-memory-theme", theme);
-  }, [theme]);
+  }, [theme, themeReady]);
+
+  useEffect(() => {
+    const ids = ["overview", "vault", "queue", "knowledge"];
+    const targets = ids.map((id) => document.getElementById(id)).filter((node): node is HTMLElement => Boolean(node));
+    if (!("IntersectionObserver" in window) || targets.length === 0) return;
+    const observer = new IntersectionObserver((entries) => {
+      const visible = entries.filter((entry) => entry.isIntersecting).sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0];
+      if (visible?.target instanceof HTMLElement) setActiveSection(visible.target.id);
+    }, { rootMargin: "-18% 0px -66% 0px", threshold: [0, 0.1, 0.25, 0.5] });
+    targets.forEach((target) => observer.observe(target));
+    return () => observer.disconnect();
+  }, []);
 
   useEffect(() => {
     if (!selectedKnowledge) return;
     const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const previousOverflow = document.body.style.overflow;
+    const panel = sourcePanelRef.current;
+    const getFocusable = () => Array.from(panel?.querySelectorAll<HTMLElement>(
+      'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+    ) ?? []);
+    getFocusable()[0]?.focus();
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         setSelectedKnowledge(null);
         setSourceData(null);
         setSourceError(null);
+        return;
+      }
+      if (event.key !== "Tab") return;
+      const focusable = getFocusable();
+      if (focusable.length === 0) {
+        event.preventDefault();
+        panel?.focus();
+        return;
+      }
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && (document.activeElement === first || !panel?.contains(document.activeElement))) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && (document.activeElement === last || !panel?.contains(document.activeElement))) {
+        event.preventDefault();
+        first.focus();
       }
     };
     document.body.style.overflow = "hidden";
     window.addEventListener("keydown", onKeyDown);
     return () => {
-      document.body.style.overflow = "";
+      document.body.style.overflow = previousOverflow;
       window.removeEventListener("keydown", onKeyDown);
       previousFocus?.focus();
     };
@@ -129,7 +178,7 @@ export default function Home() {
         fetch(API + "/api/dashboard", { cache: "no-store" }),
         fetch(API + "/api/archives", { cache: "no-store" }),
         fetch(API + "/api/jobs", { cache: "no-store" }),
-        fetch(API + "/api/knowledge?limit=12", { cache: "no-store" }),
+        fetch(API + "/api/knowledge?limit=" + knowledgeLimit, { cache: "no-store" }),
         fetch(API + "/api/system", { cache: "no-store" }),
       ]);
       if (![c, a, j, k, s].every((response) => response.ok)) throw new Error("API unavailable");
@@ -139,7 +188,7 @@ export default function Home() {
       setCounts(nextCounts);
       setArchives(nextArchives);
       setJobs(nextJobs);
-      setKnowledge(nextKnowledge);
+      if (knowledgeMode === "latest") setKnowledge(nextKnowledge);
       setSystem(nextSystem);
       if (apiOnline !== true) setNotice("LOCAL ENGINE ONLINE");
       setApiOnline(true);
@@ -148,7 +197,7 @@ export default function Home() {
       if (apiOnline !== false) setNotice("API OFFLINE // CHECK DOCKER COMPOSE");
       setApiOnline(false);
     }
-  }, [apiOnline]);
+  }, [apiOnline, knowledgeLimit, knowledgeMode]);
 
   useEffect(() => {
     void refresh();
@@ -160,6 +209,14 @@ export default function Home() {
   const recentJobs = useMemo(() => jobs.slice(0, 5), [jobs]);
   const runningJobs = jobs.filter((job) => ["pending", "processing", "retry"].includes(job.status)).length;
   const storageTotal = archives.reduce((sum, archive) => sum + archive.size_bytes, 0);
+  const visibleKnowledge = useMemo(
+    () => knowledge.filter((item) => knowledgeKind === "all" || (item.kind || "concept").toLowerCase() === knowledgeKind),
+    [knowledge, knowledgeKind],
+  );
+  const knowledgeKinds = useMemo(
+    () => Array.from(new Set(knowledge.map((item) => (item.kind || "concept").toLowerCase()))).sort(),
+    [knowledge],
+  );
 
   async function handleUpload(file: File) {
     if (!file) return;
